@@ -32,7 +32,7 @@ function Speech(texts, options) {
   this.options = options;
   this.play = () => playbackState$.next("resumed")
   this.pause = () => playbackState$.next("paused")
-  this.stop = () => cmd$.error({name: "CancellationException", message: "Playback cancelled"})
+  this.stop = () => cmd$.error(makeCancellation())
   this.getState = getState;
   this.getInfo = getInfo;
   this.canForward = () => engine.forward != null || playlist.canForward()
@@ -195,7 +195,7 @@ function Speech(texts, options) {
       if (this.onEnd) this.onEnd()
     },
     error: err => {
-      if (err.name != "CancellationException") {
+      if (!isCancellation(err)) {
         if (this.onEnd) this.onEnd(err)
       }
     }

@@ -769,6 +769,18 @@ function bgPageInvoke(method, args) {
 
 // A dropped connection to a not-yet-ready receiver surfaces as one of these
 // transient runtime errors; annotate it with the method for easier debugging.
+// Playback cancellation protocol. A deliberate stop is signalled by erroring the
+// playback stream with an object carrying this well-known name, so every layer
+// (speech.js, document.js, popup.js) can tell an intentional cancel apart from a
+// genuine synthesis/network failure. Use these helpers instead of hand-writing
+// the literal, so the name can never drift.
+function makeCancellation() {
+  return {name: "CancellationException", message: "Playback cancelled"}
+}
+function isCancellation(err) {
+  return err != null && err.name == "CancellationException"
+}
+
 function rethrowMessagingError(err, method) {
   if (/^(A listener indicated|Could not establish)/.test(err.message)) throw new Error(err.message + " " + method)
   throw err

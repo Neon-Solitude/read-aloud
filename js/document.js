@@ -140,7 +140,7 @@ function Doc(source, onEnd) {
 
   //method close
   function close() {
-    playbackState.error({name: "CancellationException", message: "Playback cancelled"})
+    playbackState.error(makeCancellation())
     return ready
       .catch(function() {})
       .then(function() {

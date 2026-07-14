@@ -73,11 +73,10 @@ test("manifest and package versions are valid semver", () => {
   assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
 });
 
-test("KNOWN ISSUE (fix in Phase 7): manifest and package versions have drifted", () => {
-  // manifest.json is the source of truth (2.23.0); package.json (1.0.1) is stale
-  // metadata. Documented here; Phase 7 reconciles them and this test flips to
-  // assert equality.
+test("manifest and package versions agree", () => {
+  // Reconciled in Phase 7: package.json (was stale at 1.0.1) now tracks
+  // manifest.json, the source of truth. Keep these in lockstep on every release.
   const manifest = JSON.parse(readSrc("manifest.json"));
   const pkg = JSON.parse(readSrc("package.json"));
-  assert.notEqual(manifest.version, pkg.version);
+  assert.equal(manifest.version, pkg.version);
 });

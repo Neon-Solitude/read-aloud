@@ -84,7 +84,7 @@ async function init() {
 
 function handleError(err) {
   if (!err) return;
-  if (err.name == "CancellationException") return;
+  if (isCancellation(err)) return;
 
   const status = qs("#status")
   if (/^{/.test(err.message)) {

@@ -24,6 +24,11 @@ const nghiTtsEngine = new HostedToolTtsEngine({
 })
 
 
+// How long a cached remote voice list (Polly/Wavenet/Watson/Azure/premium)
+// stays fresh before we re-fetch it from the provider.
+const VOICE_LIST_TTL = 24*3600*1000;   // 24 hours
+
+
 //synthesized audio cache
 const cache = {
   entries: new Map(),
@@ -279,7 +284,7 @@ function PremiumTtsEngine(serviceUrl) {
       const res = await fetch(serviceUrl + "/read-aloud/list-voices/premium")
       if (!res.ok) throw new Error("Server return " + res.status)
       const items = await res.json()
-      await updateSetting("premiumVoiceList", {items, expire: Date.now() + 24*3600*1000})
+      await updateSetting("premiumVoiceList", {items, expire: Date.now() + VOICE_LIST_TTL})
     } catch (err) {
       console.error("Error refreshing premium voice list", err)
     }
@@ -523,7 +528,7 @@ function AmazonPollyTtsEngine() {
       if (!awsCreds) return []
       if (pollyVoices && pollyVoices.expire > Date.now()) return pollyVoices.list
       const list = await fetchVoices()
-      await updateSettings({pollyVoices: {list, expire: Date.now() + 24*3600*1000}})
+      await updateSettings({pollyVoices: {list, expire: Date.now() + VOICE_LIST_TTL}})
       return list
     }
     catch (err) {
@@ -621,7 +626,7 @@ function GoogleWavenetTtsEngine() {
   this.getVoices = function() {
     return getSettings(["wavenetVoices", "gcpCreds"])
       .then(function(items) {
-        if (!items.wavenetVoices || Date.now()-items.wavenetVoices[0].ts > 24*3600*1000) updateVoices();
+        if (!items.wavenetVoices || Date.now()-items.wavenetVoices[0].ts > VOICE_LIST_TTL) updateVoices();
         var listvoices = items.wavenetVoices || voices;
         var creds = items.gcpCreds;
         return listvoices.filter(
@@ -795,7 +800,7 @@ function IbmWatsonTtsEngine() {
     return getSettings(["watsonVoices", "ibmCreds"])
       .then(function(items) {
         if (!items.ibmCreds) return [];
-        if (items.watsonVoices && Date.now()-items.watsonVoices[0].ts < 24*3600*1000) return items.watsonVoices;
+        if (items.watsonVoices && Date.now()-items.watsonVoices[0].ts < VOICE_LIST_TTL) return items.watsonVoices;
         return fetchVoices(items.ibmCreds.apiKey, items.ibmCreds.url)
           .then(function(list) {
             list[0].ts = Date.now();
@@ -1042,7 +1047,7 @@ function AzureTtsEngine() {
       if (!azureCreds) return []
       if (azureVoices && azureVoices.expire > Date.now()) return azureVoices.list
       const list = await this.fetchVoices(azureCreds.region, azureCreds.key)
-      await updateSettings({azureVoices: {list, expire: Date.now() + 24*3600*1000}})
+      await updateSettings({azureVoices: {list, expire: Date.now() + VOICE_LIST_TTL}})
       return list
     }
     catch (err) {
