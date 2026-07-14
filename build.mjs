@@ -35,7 +35,7 @@ const ENTRIES = {
   "options": ["rxjs.umd.min", "jquery-3.7.1.min", "aws-sdk", "defaults", "messaging", "tts-engines", "options"],
   "pdf-viewer": ["rxjs.umd.min", "defaults", "messaging", "pdf-viewer"],
   "player": ["rxjs.umd.min", "peerjs.min", "defaults", "messaging", "google-translate", "aws-sdk", "tts-engines", "speech", "document", "player"],
-  "popup": ["rxjs.umd.min", "jquery-3.7.1.min", "defaults", "messaging", "popup"],
+  "popup": ["rxjs.umd.min", "defaults", "messaging", "popup"],
   "report": ["rxjs.umd.min", "defaults", "report"],
   "shortcuts": ["rxjs.umd.min", "defaults"],
   // Service worker (manifest background.service_worker -> background.js, which
