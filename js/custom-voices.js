@@ -33,35 +33,57 @@ function obfuscate(key) {
 }
 
 
-function awsSave() {
-  $(".status").hide();
-  var accessKeyId = $("#aws-access-key-id").val().trim();
-  var secretAccessKey = $("#aws-secret-access-key").val().trim();
-  if (accessKeyId && secretAccessKey) {
-    $("#aws-progress").show();
-    testAws(accessKeyId, secretAccessKey)
-      .then(function() {
-        $("#aws-progress").hide();
-        updateSettings({awsCreds: {accessKeyId: accessKeyId, secretAccessKey: secretAccessKey}});
-        $("#aws-success").text("Amazon Polly voices are enabled.").show();
-        $("#aws-access-key-id").val(obfuscate(accessKeyId));
-        $("#aws-secret-access-key").val(obfuscate(secretAccessKey));
-      },
-      function(err) {
-        $("#aws-progress").hide();
-        $("#aws-error").text("Test failed: " + err.message).show();
-      })
-  }
-  else if (!accessKeyId && !secretAccessKey) {
-    clearSettings(["awsCreds"])
-      .then(function() {
-        $("#aws-success").text("Amazon Polly voices are disabled.").show();
-      })
-  }
-  else {
-    $("#aws-error").text("Missing required fields.").show();
-  }
+// Builds the click handler for a credentials panel (AWS/GCP/IBM/Azure). Read the
+// fields; if all are filled, test -> save -> obfuscate; if all are empty, clear
+// the saved creds; otherwise report missing fields. Config:
+//   prefix          element-id prefix for the -progress/-success/-error status
+//   settingsKey     storage key for the creds
+//   fields          [{id, key, obfuscate}] inputs (values collected keyed by `key`)
+//   test(values)    Promise that validates the credentials
+//   buildCreds(v)   object to persist (may read extra controls, e.g. a checkbox)
+//   enabledMessage(v) / disabledMessage   status text
+function makeCredentialForm(config) {
+  return async function() {
+    $(".status").hide();
+    const values = {};
+    for (const f of config.fields) values[f.key] = $("#" + f.id).val().trim();
+    if (config.fields.every(f => values[f.key])) {
+      $("#" + config.prefix + "-progress").show();
+      try {
+        await config.test(values);
+        await updateSettings({[config.settingsKey]: config.buildCreds(values)});
+        $("#" + config.prefix + "-success").text(config.enabledMessage(values)).show();
+        for (const f of config.fields) if (f.obfuscate) $("#" + f.id).val(obfuscate(values[f.key]));
+      }
+      catch (err) {
+        $("#" + config.prefix + "-error").text("Test failed: " + err.message).show();
+      }
+      finally {
+        $("#" + config.prefix + "-progress").hide();
+      }
+    }
+    else if (config.fields.every(f => !values[f.key])) {
+      await clearSettings([config.settingsKey]);
+      $("#" + config.prefix + "-success").text(config.disabledMessage).show();
+    }
+    else {
+      $("#" + config.prefix + "-error").text("Missing required fields.").show();
+    }
+  };
 }
+
+const awsSave = makeCredentialForm({
+  prefix: "aws",
+  settingsKey: "awsCreds",
+  fields: [
+    {id: "aws-access-key-id", key: "accessKeyId", obfuscate: true},
+    {id: "aws-secret-access-key", key: "secretAccessKey", obfuscate: true},
+  ],
+  test: v => testAws(v.accessKeyId, v.secretAccessKey),
+  buildCreds: v => ({accessKeyId: v.accessKeyId, secretAccessKey: v.secretAccessKey}),
+  enabledMessage: () => "Amazon Polly voices are enabled.",
+  disabledMessage: "Amazon Polly voices are disabled.",
+});
 
 function testAws(accessKeyId, secretAccessKey) {
       var polly = new AWS.Polly({
@@ -73,70 +95,37 @@ function testAws(accessKeyId, secretAccessKey) {
 }
 
 
-function gcpSave() {
-  $(".status").hide();
-  var apiKey = $("#gcp-api-key").val().trim();
-  var enableStudio = $("#gcp-enable-studio").is(':checked');
-  if (apiKey) {
-    $("#gcp-progress").show();
-    testGcp(apiKey)
-      .then(function() {
-        $("#gcp-progress").hide();
-        updateSettings({gcpCreds: {apiKey: apiKey, enableStudio: enableStudio}});
-        if (enableStudio) {
-          $("#gcp-success").text("Google Wavenet & Studio voices are enabled.").show();
-        } else {
-          $("#gcp-success").text("Google Wavenet voices are enabled.").show();
-        }
-        $("#gcp-api-key").val(obfuscate(apiKey));
-      },
-      function(err) {
-        $("#gcp-progress").hide();
-        $("#gcp-error").text("Test failed: " + err.message).show();
-      })
-  }
-  else {
-    clearSettings(["gcpCreds"])
-      .then(function() {
-        $("#gcp-success").text("Google Wavenet voices are disabled.").show();
-      })
-  }
-}
+const gcpSave = makeCredentialForm({
+  prefix: "gcp",
+  settingsKey: "gcpCreds",
+  fields: [
+    {id: "gcp-api-key", key: "apiKey", obfuscate: true},
+  ],
+  test: v => testGcp(v.apiKey),
+  buildCreds: v => ({apiKey: v.apiKey, enableStudio: $("#gcp-enable-studio").is(':checked')}),
+  enabledMessage: () => $("#gcp-enable-studio").is(':checked')
+    ? "Google Wavenet & Studio voices are enabled."
+    : "Google Wavenet voices are enabled.",
+  disabledMessage: "Google Wavenet voices are disabled.",
+});
 
 function testGcp(apiKey) {
       return ajaxGet("https://texttospeech.googleapis.com/v1beta1/voices?key=" + apiKey);
 }
 
 
-function ibmSave() {
-  $(".status").hide();
-  var apiKey = $("#ibm-api-key").val().trim();
-  var url = $("#ibm-url").val().trim();
-  if (apiKey && url) {
-    $("#ibm-progress").show();
-    testIbm(apiKey, url)
-      .then(function() {
-        $("#ibm-progress").hide();
-        updateSettings({ibmCreds: {apiKey: apiKey, url: url}});
-        $("#ibm-success").text("IBM Watson voices are enabled.").show();
-        $("#ibm-api-key").val(obfuscate(apiKey));
-        $("#ibm-url").val(obfuscate(url));
-      },
-      function(err) {
-        $("#ibm-progress").hide();
-        $("#ibm-error").text("Test failed: " + err.message).show();
-      })
-  }
-  else if (!apiKey && !url) {
-    clearSettings(["ibmCreds"])
-      .then(function() {
-        $("#ibm-success").text("IBM Watson voices are disabled.").show();
-      })
-  }
-  else {
-    $("#ibm-error").text("Missing required fields.").show();
-  }
-}
+const ibmSave = makeCredentialForm({
+  prefix: "ibm",
+  settingsKey: "ibmCreds",
+  fields: [
+    {id: "ibm-api-key", key: "apiKey", obfuscate: true},
+    {id: "ibm-url", key: "url", obfuscate: true},
+  ],
+  test: v => testIbm(v.apiKey, v.url),
+  buildCreds: v => ({apiKey: v.apiKey, url: v.url}),
+  enabledMessage: () => "IBM Watson voices are enabled.",
+  disabledMessage: "IBM Watson voices are disabled.",
+});
 
 function testIbm(apiKey, url) {
   return brapi.permissions.request({origins: [url + "/*"]})
@@ -149,33 +138,18 @@ function testIbm(apiKey, url) {
 }
 
 
-async function azureSave() {
-  $(".status").hide()
-  const region = $("#azure-region").val().trim()
-  const key = $("#azure-key").val().trim()
-  if (region && key) {
-    $("#azure-progress").show()
-    try {
-      await testAzure(region, key)
-      await updateSettings({azureCreds: {region, key}})
-      $("#azure-success").text("Azure voices are enabled.").show()
-      $("#azure-key").val(obfuscate(key))
-    }
-    catch (err) {
-      $("#azure-error").text("Test failed: " + err.message).show()
-    }
-    finally {
-      $("#azure-progress").hide()
-    }
-  }
-  else if (!region && !key) {
-    await clearSettings(["azureCreds"])
-    $("#azure-success").text("IBM Watson voices are disabled.").show()
-  }
-  else {
-    $("#azure-error").text("Missing required fields.").show()
-  }
-}
+const azureSave = makeCredentialForm({
+  prefix: "azure",
+  settingsKey: "azureCreds",
+  fields: [
+    {id: "azure-region", key: "region", obfuscate: false},
+    {id: "azure-key", key: "key", obfuscate: true},
+  ],
+  test: v => testAzure(v.region, v.key),
+  buildCreds: v => ({region: v.region, key: v.key}),
+  enabledMessage: () => "Azure voices are enabled.",
+  disabledMessage: "Azure voices are disabled.",   // was mistakenly "IBM Watson voices are disabled."
+});
 
 async function testAzure(region, key) {
   await azureTtsEngine.fetchVoices(region, key)
