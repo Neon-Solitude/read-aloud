@@ -1,3 +1,8 @@
+// Standalone messaging for page-context scripts (injected into the page's main
+// world and served from S3 via `npm run sync-page-scripts`). This runs without
+// the extension's brapi.* runtime, so it deliberately carries only the classic
+// MessagingPeer/RpcPeer classes -- it is NOT a copy of js/messaging.js.
+
 /*
 interface MessagingPeer {
   send(msg)
