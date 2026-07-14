@@ -549,6 +549,19 @@ function show(el) {
   }
 }
 function toggle(el, visible) { if (visible) show(el); else hide(el) }
+// Create an element with optional class / text / html / attributes, appended to
+// a parent. Replaces the jQuery $("<tag>").addClass().text().attr().appendTo()
+// chains used to build UI.
+function makeEl(tag, opts) {
+  opts = opts || {}
+  const el = document.createElement(tag)
+  if (opts.className) el.className = opts.className
+  if (opts.text != null) el.textContent = opts.text
+  if (opts.html != null) el.innerHTML = opts.html
+  if (opts.attrs) for (const k in opts.attrs) el.setAttribute(k, opts.attrs[k])
+  if (opts.parent) opts.parent.appendChild(el)
+  return el
+}
 
 function domReady() {
   return new Promise(function(fulfill) {
