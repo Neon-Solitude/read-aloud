@@ -13,15 +13,18 @@ const { loadDecls } = require("./harness/extract.js");
 
 function harness(fieldValues) {
   const calls = { update: [], clear: [], texts: [], shown: [] };
-  const $ = (sel) => ({
-    val(v) { if (arguments.length === 0) return fieldValues[sel] || ""; return this; },
-    hide() { return this; },
-    show() { calls.shown.push(sel); return this; },
-    text(t) { calls.texts.push(t); return this; },
-    is() { return false; },
+  const qs = (sel) => ({
+    get value() { return fieldValues[sel] || ""; },
+    set value(v) {},
+    set textContent(t) { calls.texts.push(t); },
+    checked: false,
   });
+  const qsa = () => [];
   const { makeCredentialForm } = loadDecls("js/custom-voices.js", ["makeCredentialForm", "obfuscate"], {
-    $,
+    qs,
+    qsa,
+    show: () => { calls.shown.push(true); },
+    hide: () => {},
     updateSettings: async (o) => { calls.update.push(o); },
     clearSettings: async (k) => { calls.clear.push(k); },
   });

@@ -1,29 +1,29 @@
 
-$(function() {
+domReady().then(() => {
   getSettings(["awsCreds", "gcpCreds", "ibmCreds", "azureCreds"])
     .then(function(items) {
       if (items.awsCreds) {
-        $("#aws-access-key-id").val(obfuscate(items.awsCreds.accessKeyId));
-        $("#aws-secret-access-key").val(obfuscate(items.awsCreds.secretAccessKey));
+        qs("#aws-access-key-id").value = obfuscate(items.awsCreds.accessKeyId);
+        qs("#aws-secret-access-key").value = obfuscate(items.awsCreds.secretAccessKey);
       }
       if (items.gcpCreds) {
-        $("#gcp-api-key").val(obfuscate(items.gcpCreds.apiKey));
-        $("#gcp-enable-studio").prop('checked', items.gcpCreds.enableStudio);
+        qs("#gcp-api-key").value = obfuscate(items.gcpCreds.apiKey);
+        qs("#gcp-enable-studio").checked = items.gcpCreds.enableStudio;
       }
       if (items.ibmCreds) {
-        $("#ibm-api-key").val(obfuscate(items.ibmCreds.apiKey));
-        $("#ibm-url").val(obfuscate(items.ibmCreds.url));
+        qs("#ibm-api-key").value = obfuscate(items.ibmCreds.apiKey);
+        qs("#ibm-url").value = obfuscate(items.ibmCreds.url);
       }
       if (items.azureCreds) {
-        $("#azure-region").val(items.azureCreds.region)
-        $("#azure-key").val(obfuscate(items.azureCreds.key))
+        qs("#azure-region").value = items.azureCreds.region;
+        qs("#azure-key").value = obfuscate(items.azureCreds.key);
       }
     })
-  $(".status").hide();
-  $("#aws-save-button").click(awsSave);
-  $("#gcp-save-button").click(gcpSave);
-  $("#ibm-save-button").click(ibmSave);
-  $("#azure-save-button").click(azureSave)
+  qsa(".status").forEach(hide);
+  qs("#aws-save-button").addEventListener("click", awsSave);
+  qs("#gcp-save-button").addEventListener("click", gcpSave);
+  qs("#ibm-save-button").addEventListener("click", ibmSave);
+  qs("#azure-save-button").addEventListener("click", azureSave);
 })
 
 function obfuscate(key) {
@@ -43,31 +43,33 @@ function obfuscate(key) {
 //   buildCreds(v)   object to persist (may read extra controls, e.g. a checkbox)
 //   enabledMessage(v) / disabledMessage   status text
 function makeCredentialForm(config) {
+  const statusEl = suffix => qs("#" + config.prefix + suffix)
+  const report = (suffix, text) => { const el = statusEl(suffix); el.textContent = text; show(el); }
   return async function() {
-    $(".status").hide();
+    qsa(".status").forEach(hide);
     const values = {};
-    for (const f of config.fields) values[f.key] = $("#" + f.id).val().trim();
+    for (const f of config.fields) values[f.key] = qs("#" + f.id).value.trim();
     if (config.fields.every(f => values[f.key])) {
-      $("#" + config.prefix + "-progress").show();
+      show(statusEl("-progress"));
       try {
         await config.test(values);
         await updateSettings({[config.settingsKey]: config.buildCreds(values)});
-        $("#" + config.prefix + "-success").text(config.enabledMessage(values)).show();
-        for (const f of config.fields) if (f.obfuscate) $("#" + f.id).val(obfuscate(values[f.key]));
+        report("-success", config.enabledMessage(values));
+        for (const f of config.fields) if (f.obfuscate) qs("#" + f.id).value = obfuscate(values[f.key]);
       }
       catch (err) {
-        $("#" + config.prefix + "-error").text("Test failed: " + err.message).show();
+        report("-error", "Test failed: " + err.message);
       }
       finally {
-        $("#" + config.prefix + "-progress").hide();
+        hide(statusEl("-progress"));
       }
     }
     else if (config.fields.every(f => !values[f.key])) {
       await clearSettings([config.settingsKey]);
-      $("#" + config.prefix + "-success").text(config.disabledMessage).show();
+      report("-success", config.disabledMessage);
     }
     else {
-      $("#" + config.prefix + "-error").text("Missing required fields.").show();
+      report("-error", "Missing required fields.");
     }
   };
 }
@@ -102,8 +104,8 @@ const gcpSave = makeCredentialForm({
     {id: "gcp-api-key", key: "apiKey", obfuscate: true},
   ],
   test: v => testGcp(v.apiKey),
-  buildCreds: v => ({apiKey: v.apiKey, enableStudio: $("#gcp-enable-studio").is(':checked')}),
-  enabledMessage: () => $("#gcp-enable-studio").is(':checked')
+  buildCreds: v => ({apiKey: v.apiKey, enableStudio: qs("#gcp-enable-studio").checked}),
+  enabledMessage: () => qs("#gcp-enable-studio").checked
     ? "Google Wavenet & Studio voices are enabled."
     : "Google Wavenet voices are enabled.",
   disabledMessage: "Google Wavenet voices are disabled.",
@@ -158,55 +160,56 @@ async function testAzure(region, key) {
 
 
 //OpenAI
-$(function() {
+domReady().then(() => {
   const creds$ = observeSetting("openaiCreds")
   const editMode$ = new rxjs.BehaviorSubject(false)
   const status$ = new rxjs.BehaviorSubject({type: "IDLE"})
 
   rxjs.combineLatest(creds$, editMode$).subscribe(([creds, editMode]) => {
-    $(".openai .view-new").toggle(creds == null && !editMode)
-    $(".openai .view-exist").toggle(creds != null && !editMode)
-    $(".openai .view-edit").toggle(editMode)
+    toggle(qs(".openai .view-new"), creds == null && !editMode)
+    toggle(qs(".openai .view-exist"), creds != null && !editMode)
+    toggle(qs(".openai .view-edit"), editMode)
   })
 
   creds$.subscribe(creds => {
     const endpointUrl = creds && creds.url || openaiTtsEngine.defaultEndpointUrl
     const apiKey = creds && creds.apiKey || ""
     const voiceList = creds && creds.voiceList || openaiTtsEngine.defaultVoiceList
-    $(".openai .endpoint-url").text(endpointUrl)
-    $(".openai .api-key").text(apiKey && (apiKey.slice(0,13) + "*****" + apiKey.slice(-5)))
-    $(".openai .voice-list").text(voiceList.map(x => x.voice).join(", "))
-    $(".openai .txt-endpoint-url").val(endpointUrl)
-    $(".openai .txt-api-key").val(apiKey)
-    $(".openai .txt-voice-list").val(JSON.stringify(voiceList, null, 2))
+    qs(".openai .endpoint-url").textContent = endpointUrl
+    qs(".openai .api-key").textContent = apiKey && (apiKey.slice(0,13) + "*****" + apiKey.slice(-5))
+    qs(".openai .voice-list").textContent = voiceList.map(x => x.voice).join(", ")
+    qs(".openai .txt-endpoint-url").value = endpointUrl
+    qs(".openai .txt-api-key").value = apiKey
+    qs(".openai .txt-voice-list").value = JSON.stringify(voiceList, null, 2)
   })
 
   status$.subscribe(status => {
-    $(".openai .status.progress").toggle(status.type == "PROGRESS")
-    $(".openai .status.success").toggle(status.type == "SUCCESS")
-    $(".openai .status.error").toggle(status.type == "ERROR")
-      .text(status.type == "ERROR" ? status.error.message : "")
+    toggle(qs(".openai .status.progress"), status.type == "PROGRESS")
+    toggle(qs(".openai .status.success"), status.type == "SUCCESS")
+    const error = qs(".openai .status.error")
+    toggle(error, status.type == "ERROR")
+    error.textContent = status.type == "ERROR" ? status.error.message : ""
   })
 
   //actions
-  $(".openai .btn-add").click(() => {
+  qs(".openai .btn-add").addEventListener("click", () => {
     status$.next({type: "IDLE"})
     editMode$.next(true)
   })
-  $(".openai .btn-edit").click(() => {
+  qs(".openai .btn-edit").addEventListener("click", () => {
     status$.next({type: "IDLE"})
     editMode$.next(true)
   })
-  $(".openai .btn-delete").click(() => {
+  qs(".openai .btn-delete").addEventListener("click", () => {
     clearSettings(["openaiCreds"])
     editMode$.next(false)
   })
-  $(".openai .btn-save").click(async () => {
+  qs(".openai .btn-save").addEventListener("click", async () => {
     try {
       const openaiCreds = {
-        url: $(".openai .txt-endpoint-url").val(),
-        apiKey: $(".openai .txt-api-key").val(),
-        voiceList: JSON.parse($(".openai .txt-voice-list").val())
+        url: qs(".openai .txt-endpoint-url").value,
+        apiKey: qs(".openai .txt-api-key").value,
+        voiceList: JSON.parse(qs(".openai .txt-voice-list").value)
       }
       status$.next({type: "PROGRESS"})
       await openaiTtsEngine.test(openaiCreds)
@@ -217,7 +220,7 @@ $(function() {
       status$.next({type: "ERROR", error: err})
     }
   })
-  $(".openai .btn-cancel").click(() => {
+  qs(".openai .btn-cancel").addEventListener("click", () => {
     editMode$.next(false)
   })
 })
