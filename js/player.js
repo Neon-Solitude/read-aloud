@@ -6,77 +6,94 @@ var playbackError = null;
 var lastUrlPromise = Promise.resolve(null)
 
 
-const piperSubject = new rxjs.Subject()
-const piperObservable = rxjs.defer(() => {
-    createPiperFrame()
-    return piperSubject
-  })
-  .pipe(
-    rxjs.shareReplay({bufferSize: 1, refCount: false}),
-    rxjs.tap(raisePiperFrame)
-  )
-const piperCallbacks = new rxjs.Subject()
-const piperDispatcher = makeDispatcher("piper-host", {
-  advertiseVoices({voices}, sender) {
-    updateSettings({piperVoices: voices})
-    piperSubject.next(sender)
-  },
-  onStart: args => piperCallbacks.next({type: "start", ...args}),
-  onSentence: args => piperCallbacks.next({type: "sentence", ...args}),
-  onParagraph: args => piperCallbacks.next({type: "paragraph", ...args}),
-  onEnd: args => piperCallbacks.next({type: "end", ...args}),
-  onError: args => piperCallbacks.next({type: "error", ...args}),
-  audioPlay: args => audioPlayer.play(args.src, args.rate, args.volume),
-  audioPause: () => audioPlayer.pause(),
-  audioResume: () => audioPlayer.resume(),
+// A hosted tool runs its TTS engine inside a cross-origin iframe and talks to
+// the player over a postMessage request/callback bridge. Piper, Supertonic and
+// NghiTTS are structurally identical; this factory builds one. It returns the
+// observable/callbacks the matching engine in tts-engines.js consumes lazily,
+// the dispatcher used by the window "message" handler below, and a
+// manageVoices() handler exposed to the popup/options.
+function registerHostedTool(spec) {
+  const subject = new rxjs.Subject()
+  const callbacks = new rxjs.Subject()
+  function createFrame() {
+    const f = document.createElement("iframe")
+    f.id = spec.frameId
+    f.src = spec.url
+    f.allow = "cross-origin-isolated"
+    f.style.position = "absolute"
+    f.style.left =
+    f.style.top = "0"
+    f.style.width =
+    f.style.height = "100%"
+    f.style.borderWidth = "0"
+    document.body.appendChild(f)
+  }
+  function raiseFrame() {
+    const maxZ = $('iframe').get().reduce((max, f) => Math.max(max, Number(f.style.zIndex) || 0), 0)
+    $('#' + spec.frameId).css('z-index', maxZ + 1)
+  }
+  const observable = rxjs.defer(() => {
+      createFrame()
+      return subject
+    })
+    .pipe(
+      rxjs.shareReplay({bufferSize: 1, refCount: false}),
+      rxjs.tap(raiseFrame)
+    )
+  const handlers = {
+    advertiseVoices({voices}, sender) {
+      updateSettings({[spec.voicesKey]: voices})
+      subject.next(sender)
+    },
+    onStart: args => callbacks.next({type: "start", ...args}),
+    onSentence: args => callbacks.next({type: "sentence", ...args}),
+    onParagraph: args => callbacks.next({type: "paragraph", ...args}),
+    onEnd: args => callbacks.next({type: "end", ...args}),
+    onError: args => callbacks.next({type: "error", ...args}),
+  }
+  if (spec.audioBridge) {
+    handlers.audioPlay = args => audioPlayer.play(args.src, args.rate, args.volume)
+    handlers.audioPause = () => audioPlayer.pause()
+    handlers.audioResume = () => audioPlayer.resume()
+  }
+  const dispatcher = makeDispatcher(spec.host, handlers)
+  function manageVoices() {
+    if (isEmbedded) return "POPOUT"
+    rxjs.firstValueFrom(observable)
+      .catch(console.error)
+    brapi.tabs.getCurrent()
+      .then(tab => Promise.all([
+        brapi.windows.update(tab.windowId, {focused: true}),
+        brapi.tabs.update(tab.id, {active: true})
+      ]))
+      .catch(console.error)
+    return "OK"
+  }
+  return {host: spec.host, service: spec.service, subject, observable, callbacks, dispatcher, manageVoices}
+}
+
+const piperTool = registerHostedTool({
+  host: "piper-host", service: "piper-service", url: "https://piper.ttstool.com/",
+  frameId: "piper-frame", voicesKey: "piperVoices", audioBridge: true,
+})
+const supertonicTool = registerHostedTool({
+  host: "supertonic-host", service: "supertonic-service", url: "https://supertonic.ttstool.com/",
+  frameId: "supertonic-frame", voicesKey: "supertonicVoices", audioBridge: true,
+})
+const nghiTtsTool = registerHostedTool({
+  host: "nghitts-host", service: "nghitts-service", url: "https://nghitts.ttstool.com/?embed=1",
+  frameId: "nghitts-frame", voicesKey: "nghiTtsVoices", audioBridge: false,
 })
 
-
-const supertonicSubject = new rxjs.Subject()
-const supertonic$ = rxjs.defer(() => {
-  createSupertonicFrame()
-  return supertonicSubject
-}).pipe(
-  rxjs.shareReplay({bufferSize: 1, refCount: false}),
-  rxjs.tap(raiseSupertonicFrame)
-)
-const supertonicCallbacks = new rxjs.Subject()
-const supertonicDispatcher = makeDispatcher("supertonic-host", {
-  advertiseVoices({voices}, sender) {
-    updateSettings({supertonicVoices: voices})
-    supertonicSubject.next(sender)
-  },
-  onStart: args => supertonicCallbacks.next({type: "start", ...args}),
-  onSentence: args => supertonicCallbacks.next({type: "sentence", ...args}),
-  onParagraph: args => supertonicCallbacks.next({type: "paragraph", ...args}),
-  onEnd: args => supertonicCallbacks.next({type: "end", ...args}),
-  onError: args => supertonicCallbacks.next({type: "error", ...args}),
-  audioPlay: args => audioPlayer.play(args.src, args.rate, args.volume),
-  audioPause: () => audioPlayer.pause(),
-  audioResume: () => audioPlayer.resume(),
-})
-
-
-const nghiTtsSubject = new rxjs.Subject()
-const nghiTtsObservable = rxjs.defer(() => {
-  createNghiTtsFrame()
-  return nghiTtsSubject
-}).pipe(
-  rxjs.shareReplay({bufferSize: 1, refCount: false}),
-  rxjs.tap(raiseNghiTtsFrame)
-)
-const nghiTtsCallbacks = new rxjs.Subject()
-const nghiTtsDispatcher = makeDispatcher("nghitts-host", {
-  advertiseVoices({voices}, sender) {
-    updateSettings({nghiTtsVoices: voices})
-    nghiTtsSubject.next(sender)
-  },
-  onStart: args => nghiTtsCallbacks.next({type: "start", ...args}),
-  onSentence: args => nghiTtsCallbacks.next({type: "sentence", ...args}),
-  onParagraph: args => nghiTtsCallbacks.next({type: "paragraph", ...args}),
-  onEnd: args => nghiTtsCallbacks.next({type: "end", ...args}),
-  onError: args => nghiTtsCallbacks.next({type: "error", ...args}),
-})
+// Names consumed elsewhere: tts-engines.js reads these observables/callbacks
+// lazily; the window "message" handler and popup/options use the dispatchers and
+// manageVoices handlers.
+const {observable: piperObservable, callbacks: piperCallbacks, dispatcher: piperDispatcher} = piperTool
+const {observable: supertonic$, callbacks: supertonicCallbacks, dispatcher: supertonicDispatcher} = supertonicTool
+const {observable: nghiTtsObservable, callbacks: nghiTtsCallbacks, dispatcher: nghiTtsDispatcher} = nghiTtsTool
+const managePiperVoices = piperTool.manageVoices
+const manageSupertonicVoices = supertonicTool.manageVoices
+const manageNghiTtsVoices = nghiTtsTool.manageVoices
 
 
 const audioPlayer = immediate(() => {
@@ -127,37 +144,18 @@ const fasttextDispatcher = makeDispatcher("fasttext-host", {
 window.addEventListener("message", event => {
   const send = message => event.source.postMessage(message, {targetOrigin: event.origin})
 
-  piperDispatcher.dispatch(event.data, {
-    sendRequest(method, args) {
-      const id = String(Math.random())
-      send({from: "piper-host", to: "piper-service", type: "request", id, method, args})
-      return piperDispatcher.waitForResponse(id)
-    }
-  }, send)
-
-  supertonicDispatcher.dispatch(event.data, {
-    sendRequest(method, args) {
-      const id = String(Math.random())
-      send({from: "supertonic-host", to: "supertonic-service", type: "request", id, method, args})
-      return supertonicDispatcher.waitForResponse(id)
-    }
-  }, send)
-
-  nghiTtsDispatcher.dispatch(event.data, {
-    sendRequest(method, args) {
-      const id = String(Math.random())
-      send({from: "nghitts-host", to: "nghitts-service", type: "request", id, method, args})
-      return nghiTtsDispatcher.waitForResponse(id)
-    }
-  }, send)
-
-  fasttextDispatcher.dispatch(event.data, {
-    sendRequest(method, args) {
-      const id = String(Math.random())
-      send({from: "fasttext-host", to: "fasttext-service", type: "request", id, method, args})
-      return fasttextDispatcher.waitForResponse(id)
-    }
-  }, send)
+  for (const {dispatcher, host, service} of [
+    piperTool, supertonicTool, nghiTtsTool,
+    {dispatcher: fasttextDispatcher, host: "fasttext-host", service: "fasttext-service"},
+  ]) {
+    dispatcher.dispatch(event.data, {
+      sendRequest(method, args) {
+        const id = String(Math.random())
+        send({from: host, to: service, type: "request", id, method, args})
+        return dispatcher.waitForResponse(id)
+      }
+    }, send)
+  }
 })
 
 
@@ -166,9 +164,9 @@ const idleSubject = new rxjs.BehaviorSubject(true)
 if (queryString.has("autoclose")) {
   rxjs.combineLatest(
     idleSubject,
-    piperSubject.pipe(rxjs.startWith(null)),
-    supertonicSubject.pipe(rxjs.startWith(null)),
-    nghiTtsSubject.pipe(rxjs.startWith(null))
+    piperTool.subject.pipe(rxjs.startWith(null)),
+    supertonicTool.subject.pipe(rxjs.startWith(null)),
+    nghiTtsTool.subject.pipe(rxjs.startWith(null))
   ).pipe(
     rxjs.switchMap(([isIdle, piper, supertonic, nghiTts]) =>
       rxjs.iif(
@@ -482,113 +480,6 @@ async function shouldPlaySilence(providerId) {
     }
   }
 }
-
-function managePiperVoices() {
-  if (isEmbedded) {
-    return "POPOUT"
-  }
-  else {
-    rxjs.firstValueFrom(piperObservable)
-      .catch(console.error)
-    brapi.tabs.getCurrent()
-      .then(tab => Promise.all([
-        brapi.windows.update(tab.windowId, {focused: true}),
-        brapi.tabs.update(tab.id, {active: true})
-      ]))
-      .catch(console.error)
-    return "OK"
-  }
-}
-
-function createPiperFrame() {
-  const f = document.createElement("iframe")
-  f.id = "piper-frame"
-  f.src = "https://piper.ttstool.com/"
-  f.allow = "cross-origin-isolated"
-  f.style.position = "absolute"
-  f.style.left =
-  f.style.top = "0"
-  f.style.width =
-  f.style.height = "100%"
-  f.style.borderWidth = "0"
-  document.body.appendChild(f)
-}
-
-function raisePiperFrame() {
-  const maxZ = $('iframe').get().reduce((max, f) => Math.max(max, Number(f.style.zIndex) || 0), 0)
-  $('#piper-frame').css('z-index', maxZ + 1)
-}
-
-function manageSupertonicVoices() {
-  if (isEmbedded) {
-    return "POPOUT"
-  } else {
-    rxjs.firstValueFrom(supertonic$)
-      .catch(console.error)
-    brapi.tabs.getCurrent()
-      .then(tab => Promise.all([
-        brapi.windows.update(tab.windowId, {focused: true}),
-        brapi.tabs.update(tab.id, {active: true})
-      ]))
-      .catch(console.error)
-    return "OK"
-  }
-}
-
-function createSupertonicFrame() {
-  const f = document.createElement("iframe")
-  f.id = "supertonic-frame"
-  f.src = "https://supertonic.ttstool.com/"
-  f.allow = "cross-origin-isolated"
-  f.style.position = "absolute"
-  f.style.left =
-  f.style.top = "0"
-  f.style.width =
-  f.style.height = "100%"
-  f.style.borderWidth = "0"
-  document.body.appendChild(f)
-}
-
-function raiseSupertonicFrame() {
-  const maxZ = $('iframe').get().reduce((max, f) => Math.max(max, Number(f.style.zIndex) || 0), 0)
-  $('#supertonic-frame').css('z-index', maxZ + 1)
-}
-
-function manageNghiTtsVoices() {
-  if (isEmbedded) {
-    return "POPOUT"
-  } else {
-    rxjs.firstValueFrom(nghiTtsObservable)
-      .catch(console.error)
-    brapi.tabs.getCurrent()
-      .then(tab => Promise.all([
-        brapi.windows.update(tab.windowId, {focused: true}),
-        brapi.tabs.update(tab.id, {active: true})
-      ]))
-      .catch(console.error)
-    return "OK"
-  }
-}
-
-function createNghiTtsFrame() {
-  const f = document.createElement("iframe")
-  f.id = "nghitts-frame"
-  f.src = "https://nghitts.ttstool.com/?embed=1"
-  f.allow = "cross-origin-isolated"
-  f.style.position = "absolute"
-  f.style.left =
-  f.style.top = "0"
-  f.style.width =
-  f.style.height = "100%"
-  f.style.borderWidth = "0"
-  document.body.appendChild(f)
-}
-
-function raiseNghiTtsFrame() {
-  const maxZ = $('iframe').get().reduce((max, f) => Math.max(max, Number(f.style.zIndex) || 0), 0)
-  $('#nghitts-frame').css('z-index', maxZ + 1)
-}
-
 
 function createFasttextFrame() {
   const f = document.createElement("iframe")
