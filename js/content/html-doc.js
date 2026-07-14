@@ -168,7 +168,15 @@ var readAloudDoc = new function() {
   }
 
   function addMissingPunctuation(text) {
-    return text.replace(/(\w)(\s*?\r?\n)/g, "$1.$2");
+    return removeReferences(text).replace(/(\w)(\s*?\r?\n)/g, "$1.$2");
+  }
+
+  // Strip inline bibliography markers like "[1]" or "[42]" so they aren't read
+  // aloud mid-sentence -- essential for academic articles. Superscript refs are
+  // already dropped by dontRead(); this catches the in-text bracketed variety.
+  // Adapted from upstream PR #369.
+  function removeReferences(text) {
+    return text.replace(/\[[0-9]+\]/g, "");
   }
 
   function findHeadingsFor(block, prevBlock) {

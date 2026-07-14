@@ -14,12 +14,16 @@ engineInitializingSubject
     rxjs.distinctUntilChanged()
   )
   .subscribe(engine => {
-    if (engine) $("#status").text(`${engine} TTS engine initializing...`).show()
-    else $("#status").hide()
+    const status = qs("#status")
+    if (engine) {
+      status.textContent = `${engine} TTS engine initializing...`
+      show(status)
+    }
+    else hide(status)
   })
 
-$(function() {
-  if (queryString.isPopup) $("body").addClass("is-popup")
+domReady().then(function() {
+  if (queryString.isPopup) document.body.classList.add("is-popup")
   else getCurrentTab().then(function(currentTab) {return updateSettings({readAloudTab: currentTab.id})})
 })
 
@@ -57,17 +61,17 @@ async function popout(tabId) {
 async function init() {
   await domReady()
 
-  $("#btnPlay").click(onPlay);
-  $("#btnPause").click(onPause);
-  $("#btnStop").click(onStop);
-  $("#btnSettings").click(onSettings);
-  $("#btnForward").click(onForward);
-  $("#btnRewind").click(onRewind);
-  $("#decrease-font-size").click(changeFontSize.bind(null, -1));
-  $("#increase-font-size").click(changeFontSize.bind(null, +1));
-  $("#decrease-window-size").click(changeWindowSize.bind(null, -1));
-  $("#increase-window-size").click(changeWindowSize.bind(null, +1));
-  $("#toggle-dark-mode").click(toggleDarkMode);
+  qs("#btnPlay").addEventListener("click", onPlay);
+  qs("#btnPause").addEventListener("click", onPause);
+  qs("#btnStop").addEventListener("click", onStop);
+  qs("#btnSettings").addEventListener("click", onSettings);
+  qs("#btnForward").addEventListener("click", onForward);
+  qs("#btnRewind").addEventListener("click", onRewind);
+  qs("#decrease-font-size").addEventListener("click", changeFontSize.bind(null, -1));
+  qs("#increase-font-size").addEventListener("click", changeFontSize.bind(null, +1));
+  qs("#decrease-window-size").addEventListener("click", changeWindowSize.bind(null, -1));
+  qs("#increase-window-size").addEventListener("click", changeWindowSize.bind(null, +1));
+  qs("#toggle-dark-mode").addEventListener("click", toggleDarkMode);
 
   refreshSize();
   checkAnnouncements();
@@ -80,14 +84,16 @@ async function init() {
 
 function handleError(err) {
   if (!err) return;
-  if (err.name == "CancellationException") return;
+  if (isCancellation(err)) return;
 
+  const status = qs("#status")
   if (/^{/.test(err.message)) {
     var errInfo = JSON.parse(err.message);
 
-    $("#status").html(formatError(errInfo)).show();
-    $("#status a").click(function() {
-      switch ($(this).attr("href")) {
+    status.innerHTML = formatError(errInfo);
+    show(status);
+    qsa("#status a").forEach(link => link.addEventListener("click", function() {
+      switch (this.getAttribute("href")) {
         case "#open-extension-settings":
           brapi.tabs.create({url: "chrome://extensions/?id=" + brapi.runtime.id});
           break;
@@ -96,17 +102,18 @@ function handleError(err) {
             .then(function(granted) {
               if (granted) {
                 if (errInfo.reload) return reloadAndPlay()
-                else $("#btnPlay").click()
+                else qs("#btnPlay").click()
               }
             })
           break;
         case "#sign-in":
           getAuthToken({interactive: true})
             .then(function(token) {
-              if (token) $("#btnPlay").click();
+              if (token) qs("#btnPlay").click();
             })
             .catch(function(err) {
-              $("#status").text(err.message).show();
+              status.textContent = err.message;
+              show(status);
             })
           break;
         case "#auth-wavenet":
@@ -122,13 +129,14 @@ function handleError(err) {
           location.href = "connect-phone.html"
           break
       }
-    })
+    }))
   }
   else if (config.browserId == "opera" && /locked fullscreen/.test(err.message)) {
-    $("#status").html("Click <a href='#open-player-tab'>here</a> to start read aloud.").show()
-    $("#status a").click(async function() {
+    status.innerHTML = "Click <a href='#open-player-tab'>here</a> to start read aloud.";
+    show(status);
+    qsa("#status a").forEach(link => link.addEventListener("click", async function() {
       try {
-        playerCheckIn$.pipe(rxjs.take(1)).subscribe(() => $("#btnPlay").click())
+        playerCheckIn$.pipe(rxjs.take(1)).subscribe(() => qs("#btnPlay").click())
         const tab = await brapi.tabs.create({
           url: "player.html?opener=popup&autoclose=long",
           index: 0,
@@ -139,10 +147,11 @@ function handleError(err) {
       } catch (err) {
         handleError(err)
       }
-    })
+    }))
   }
   else {
-    $("#status").text(err.message).show();
+    status.textContent = err.message;
+    show(status);
   }
 }
 
@@ -163,66 +172,67 @@ async function updateButtons() {
   if (playbackErr) handleError(playbackErr)
   engineInitializingSubject.next(state == "LOADING" && speech?.engine)
 
-  $("#imgLoading").toggle(state == "LOADING");
-  $("#btnSettings").toggle(state == "STOPPED");
-  $("#btnPlay").toggle(state == "PAUSED" || state == "STOPPED");
-  $("#btnPause").toggle(state == "PLAYING");
-  $("#btnStop").toggle(state == "PAUSED" || state == "PLAYING" || state == "LOADING");
-  $("#btnForward, #btnRewind").toggle(state == "PLAYING" || state == "PAUSED");
+  toggle(qs("#imgLoading"), state == "LOADING");
+  toggle(qs("#btnSettings"), state == "STOPPED");
+  toggle(qs("#btnPlay"), state == "PAUSED" || state == "STOPPED");
+  toggle(qs("#btnPause"), state == "PLAYING");
+  toggle(qs("#btnStop"), state == "PAUSED" || state == "PLAYING" || state == "LOADING");
+  qsa("#btnForward, #btnRewind").forEach(el => toggle(el, state == "PLAYING" || state == "PAUSED"));
 
   if (showHighlighting && (state == "LOADING" || state == "PAUSED" || state == "PLAYING") && speech) {
-    $("#highlight, #toolbar").show()
+    qsa("#highlight, #toolbar").forEach(show)
     updateHighlighting(speech)
   }
   else {
-    $("#highlight, #toolbar").hide()
+    qsa("#highlight, #toolbar").forEach(hide)
   }
 }
 
 function updateHighlighting(speech) {
-  var elem = $("#highlight");
-  if (!elem.data("texts")
-    || elem.data("texts").length != speech.texts.length
-    || elem.data("texts").some((text,i) => text != speech.texts[i])
+  // Cached render state is stored directly on the element (jQuery .data
+  // equivalent for non-string values).
+  var elem = qs("#highlight");
+  if (!elem.__texts
+    || elem.__texts.length != speech.texts.length
+    || elem.__texts.some((text,i) => text != speech.texts[i])
   ) {
-    elem.css("direction", speech.isRTL ? "rtl" : "")
-      .data({texts: speech.texts, position: null})
-      .empty()
+    elem.style.direction = speech.isRTL ? "rtl" : ""
+    elem.__texts = speech.texts
+    elem.__position = null
+    elem.replaceChildren()
     for (let i=0; i<speech.texts.length; i++) {
-      makeSpan(speech.texts[i])
-        .css("cursor", "pointer")
-        .click(onSeek.bind(null, i))
-        .appendTo(elem)
+      const span = makeSpan(speech.texts[i])
+      span.style.cursor = "pointer"
+      span.addEventListener("click", onSeek.bind(null, i))
+      elem.appendChild(span)
     }
   }
 
   const pos = speech.position
-  if (!elem.data("position") || positionDiffers(elem.data("position"), pos)) {
-    elem.data("position", pos);
-    elem.find(".active").removeClass("active");
-    const child = elem.children().eq(pos.index)
+  if (!elem.__position || positionDiffers(elem.__position, pos)) {
+    elem.__position = pos;
+    for (const active of elem.querySelectorAll(".active")) active.classList.remove("active");
+    const child = elem.children[pos.index]
     const section = pos.word
     if (section) {
-      child.empty()
+      child.replaceChildren()
       const text = speech.texts[pos.index]
       let span
       if (section.startIndex > 0) {
-        makeSpan(text.slice(0, section.startIndex))
-          .appendTo(child)
+        child.appendChild(makeSpan(text.slice(0, section.startIndex)))
       }
       if (section.endIndex > section.startIndex) {
         span = makeSpan(text.slice(section.startIndex, section.endIndex))
-          .addClass("active")
-          .appendTo(child)
+        span.classList.add("active")
+        child.appendChild(span)
       }
       if (text.length > section.endIndex) {
-        makeSpan(text.slice(section.endIndex))
-          .appendTo(child)
+        child.appendChild(makeSpan(text.slice(section.endIndex)))
       }
       if (span) scrollIntoView(span, elem)
     }
     else {
-      child.addClass("active")
+      child.classList.add("active")
       scrollIntoView(child, elem)
     }
   }
@@ -230,7 +240,9 @@ function updateHighlighting(speech) {
 
 function makeSpan(text) {
   const html = escapeHtml(text).replace(/\r?\n/g, "<br/>")
-  return $("<span>").html(html)
+  const span = document.createElement("span")
+  span.innerHTML = html
+  return span
 }
 
 function positionDiffers(left, right) {
@@ -246,10 +258,10 @@ function positionDiffers(left, right) {
 }
 
 function scrollIntoView(child, scrollParent) {
-  const childTop = child.offset().top - scrollParent.offset().top
-  const childBottom = childTop + child.outerHeight()
-  if (childTop < 0 || childBottom >= scrollParent.height())
-    scrollParent.animate({scrollTop: scrollParent[0].scrollTop + childTop - 10})
+  const childTop = child.getBoundingClientRect().top - scrollParent.getBoundingClientRect().top
+  const childBottom = childTop + child.offsetHeight
+  if (childTop < 0 || childBottom >= scrollParent.clientHeight)
+    scrollParent.scrollTo({top: scrollParent.scrollTop + childTop - 10, behavior: "smooth"})
 }
 
 
@@ -257,7 +269,7 @@ function scrollIntoView(child, scrollParent) {
 var currentPlayRequestId
 
 function onPlay() {
-  $("#status").hide();
+  hide(qs("#status"));
   const requestId = currentPlayRequestId = Math.random()
   bgPageInvoke("getPlaybackState")
     .then(function(stateInfo) {
@@ -272,7 +284,7 @@ function onPlay() {
 }
 
 function reloadAndPlay() {
-  $("#status").hide();
+  hide(qs("#status"));
   bgPageInvoke("reloadAndPlayTab", queryString.tab ? [Number(queryString.tab)] : [])
     .then(updateButtons)
     .catch(handleError)
@@ -334,13 +346,12 @@ function refreshSize() {
     .then(function(settings) {
       var fontSize = getFontSize(settings);
       var windowSize = getWindowSize(settings);
-      $("#highlight").css({
-        "font-size": fontSize,
-      })
-      if (queryString.isPopup) $("#highlight").css({
-        width: isMobileOS() ? "100%" : windowSize[0],
-        height: windowSize[1]
-      })
+      const highlight = qs("#highlight")
+      highlight.style.fontSize = fontSize
+      if (queryString.isPopup) {
+        highlight.style.width = isMobileOS() ? "100%" : windowSize[0] + "px"
+        highlight.style.height = windowSize[1] + "px"
+      }
     })
   function getFontSize(settings) {
     switch (settings.highlightFontSize || defaults.highlightFontSize) {
@@ -396,12 +407,14 @@ function checkAnnouncements() {
 
 function showAnnouncement(ann) {
   var html = escapeHtml(ann.text).replace(/\[(.*?)\]/g, "<a target='_blank' href='" + ann.link + "'>$1</a>").replace(/\n/g, "<br/>");
-  $("#footer").html(html).addClass("announcement");
+  const footer = qs("#footer")
+  footer.innerHTML = html;
+  footer.classList.add("announcement");
   if (ann.disableIfClick)
-    $("#footer a").click(function() {
+    qsa("#footer a").forEach(a => a.addEventListener("click", function() {
       ann.disabled = true;
       updateSettings({announcement: ann});
-    })
+    }))
 }
 
 function toggleDarkMode() {

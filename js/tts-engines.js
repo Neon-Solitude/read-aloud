@@ -8,9 +8,25 @@ var ibmWatsonTtsEngine = new IbmWatsonTtsEngine();
 var phoneTtsEngine = new PhoneTtsEngine();
 var openaiTtsEngine = new OpenaiTtsEngine();
 var azureTtsEngine = new AzureTtsEngine();
-const piperTtsEngine = new PiperTtsEngine()
-const supertonicTtsEngine = new SupertonicTtsEngine()
-const nghiTtsEngine = new NghiTtsEngine()
+// Hosted-tool engines (Piper/Supertonic/NghiTTS) share one implementation; they
+// differ only in which player.js observable/callbacks they bind and whether the
+// speak request carries an externalPlayback flag. The observables live in
+// player.js and aren't defined until that script runs, so they're resolved
+// lazily via getters rather than captured at construction time.
+const piperTtsEngine = new HostedToolTtsEngine({
+  getTool$: () => piperObservable, getCallbacks$: () => piperCallbacks, externalPlayback: true
+})
+const supertonicTtsEngine = new HostedToolTtsEngine({
+  getTool$: () => supertonic$, getCallbacks$: () => supertonicCallbacks, externalPlayback: true
+})
+const nghiTtsEngine = new HostedToolTtsEngine({
+  getTool$: () => nghiTtsObservable, getCallbacks$: () => nghiTtsCallbacks, externalPlayback: false
+})
+
+
+// How long a cached remote voice list (Polly/Wavenet/Watson/Azure/premium)
+// stays fresh before we re-fetch it from the provider.
+const VOICE_LIST_TTL = 24*3600*1000;   // 24 hours
 
 
 //synthesized audio cache
@@ -29,6 +45,36 @@ const cache = {
     }
     return value
   }
+}
+
+
+// Shared speak()/prefetch() for engines that synthesize to an audio URL: speak
+// plays the URL through the offscreen/inline audio pipeline, prefetch just warms
+// the cache. `prepareOptions` optionally tweaks the options before playback
+// (e.g. GoogleTranslate's rate adjustment). Assign onto the engine with
+// Object.assign(this, urlPlaybackMethods(getAudioUrl)).
+function urlPlaybackMethods(getAudioUrl, prepareOptions) {
+  return {
+    speak(utterance, options, playbackState$) {
+      if (prepareOptions) prepareOptions(options)
+      return playAudio(getAudioUrl(utterance, options), options, playbackState$)
+    },
+    prefetch(utterance, options) {
+      getAudioUrl(utterance, options)
+        .catch(console.error)
+    },
+  }
+}
+
+
+// Cache an engine's synthesized audio as an object URL, revoking it on eviction.
+// `produceBlob` is an async function returning the audio Blob.
+function cacheBlobUrl(key, produceBlob) {
+  return cache.fetchCached(
+    key,
+    async () => URL.createObjectURL(await produceBlob()),
+    blobUrl => URL.revokeObjectURL(blobUrl)
+  )
 }
 
 
@@ -238,7 +284,7 @@ function PremiumTtsEngine(serviceUrl) {
       const res = await fetch(serviceUrl + "/read-aloud/list-voices/premium")
       if (!res.ok) throw new Error("Server return " + res.status)
       const items = await res.json()
-      await updateSetting("premiumVoiceList", {items, expire: Date.now() + 24*3600*1000})
+      await updateSetting("premiumVoiceList", {items, expire: Date.now() + VOICE_LIST_TTL})
     } catch (err) {
       console.error("Error refreshing premium voice list", err)
     }
@@ -246,7 +292,7 @@ function PremiumTtsEngine(serviceUrl) {
   async function getAudioUrl(utterance, {lang, voice}) {
     const {authToken, clientId, manifest} = await readyPromise
     const url = serviceUrl + "/read-aloud/speak/" + lang + "/" + encodeURIComponent(voice.voiceName) + "?c=" + encodeURIComponent(clientId) + "&t=" + encodeURIComponent(authToken) + (voice.autoSelect ? '&a=1' : '') + "&v=" + manifest.version + "&q=" + encodeURIComponent(utterance)
-    return cache.fetchCached(
+    return cacheBlobUrl(
       url,
       async () => {
         const res = await fetch(url)
@@ -254,10 +300,8 @@ function PremiumTtsEngine(serviceUrl) {
           const msg = await res.text().catch(err => "")
           throw new Error(msg || (res.status + " " + res.statusText))
         }
-        const blob = await res.blob()
-        return URL.createObjectURL(blob)
-      },
-      blobUrl => URL.revokeObjectURL(blobUrl)
+        return res.blob()
+      }
     )
   }
   var voices = [
@@ -393,15 +437,7 @@ function GoogleTranslateTtsEngine() {
   this.ready = function() {
     return googleTranslateReady();
   };
-  this.speak = function(utterance, options, playbackState$) {
-    options.rateAdjust = 1.1
-    const urlPromise = getAudioUrl(utterance, options)
-    return playAudio(urlPromise, options, playbackState$)
-  };
-  this.prefetch = function(utterance, options) {
-    getAudioUrl(utterance, options)
-      .catch(console.error)
-  };
+  Object.assign(this, urlPlaybackMethods(getAudioUrl, options => options.rateAdjust = 1.1))
   this.getVoices = function() {
     return voices;
   }
@@ -485,21 +521,14 @@ function GoogleTranslateTtsEngine() {
 
 function AmazonPollyTtsEngine() {
   var getPolly = lazy(createPolly)
-  this.speak = function(utterance, options, playbackState$) {
-    const urlPromise = getAudioUrl(utterance, options)
-    return playAudio(urlPromise, options, playbackState$)
-  };
-  this.prefetch = function(utterance, options) {
-    getAudioUrl(utterance, options)
-      .catch(console.error)
-  };
+  Object.assign(this, urlPlaybackMethods(getAudioUrl))
   this.getVoices = async function() {
     try {
       const {awsCreds, pollyVoices} = await getSettings(["awsCreds", "pollyVoices"])
       if (!awsCreds) return []
       if (pollyVoices && pollyVoices.expire > Date.now()) return pollyVoices.list
       const list = await fetchVoices()
-      await updateSettings({pollyVoices: {list, expire: Date.now() + 24*3600*1000}})
+      await updateSettings({pollyVoices: {list, expire: Date.now() + VOICE_LIST_TTL}})
       return list
     }
     catch (err) {
@@ -537,14 +566,12 @@ function AmazonPollyTtsEngine() {
     var matches = voice.voiceName.match(/^AmazonPolly .* \((\w+)\)( \+\w+)?$/);
     var voiceId = matches[1];
     var style = matches[2] && matches[2].substr(2);
-    return cache.fetchCached(
+    return cacheBlobUrl(
       JSON.stringify([text, voiceId, style]),
       async () => {
         const polly = await getPolly()
-        const blob = await polly.synthesizeSpeech(getOpts(text, voiceId, style)).promise()
-        return URL.createObjectURL(blob);
-      },
-      blobUrl => URL.revokeObjectURL(blobUrl)
+        return polly.synthesizeSpeech(getOpts(text, voiceId, style)).promise()
+      }
     )
   }
   function createPolly() {
@@ -595,18 +622,11 @@ function AmazonPollyTtsEngine() {
 
 
 function GoogleWavenetTtsEngine() {
-  this.speak = function(utterance, options, playbackState$) {
-    const urlPromise = getAudioUrl(utterance, options)
-    return playAudio(urlPromise, options, playbackState$)
-  };
-  this.prefetch = function(utterance, options) {
-    getAudioUrl(utterance, options)
-      .catch(console.error)
-  };
+  Object.assign(this, urlPlaybackMethods(getAudioUrl))
   this.getVoices = function() {
     return getSettings(["wavenetVoices", "gcpCreds"])
       .then(function(items) {
-        if (!items.wavenetVoices || Date.now()-items.wavenetVoices[0].ts > 24*3600*1000) updateVoices();
+        if (!items.wavenetVoices || Date.now()-items.wavenetVoices[0].ts > VOICE_LIST_TTL) updateVoices();
         var listvoices = items.wavenetVoices || voices;
         var creds = items.gcpCreds;
         return listvoices.filter(
@@ -775,19 +795,12 @@ function GoogleWavenetTtsEngine() {
 
 
 function IbmWatsonTtsEngine() {
-  this.speak = function(utterance, options, playbackState$) {
-    const urlPromise = getAudioUrl(utterance, options)
-    return playAudio(urlPromise, options, playbackState$)
-  };
-  this.prefetch = function(utterance, options) {
-    getAudioUrl(utterance, options)
-      .catch(console.error)
-  };
+  Object.assign(this, urlPlaybackMethods(getAudioUrl))
   this.getVoices = function() {
     return getSettings(["watsonVoices", "ibmCreds"])
       .then(function(items) {
         if (!items.ibmCreds) return [];
-        if (items.watsonVoices && Date.now()-items.watsonVoices[0].ts < 24*3600*1000) return items.watsonVoices;
+        if (items.watsonVoices && Date.now()-items.watsonVoices[0].ts < VOICE_LIST_TTL) return items.watsonVoices;
         return fetchVoices(items.ibmCreds.apiKey, items.ibmCreds.url)
           .then(function(list) {
             list[0].ts = Date.now();
@@ -806,20 +819,18 @@ function IbmWatsonTtsEngine() {
     assert(text && voice);
     var matches = voice.voiceName.match(/^IBM-Watson .* \((\w+)\)$/);
     var voiceName = voice.lang + "_" + matches[1] + "Voice";
-    return cache.fetchCached(
+    return cacheBlobUrl(
       JSON.stringify([text, voiceName]),
       async () => {
         const settings = await getSettings(["ibmCreds"])
-        const blob = await ajaxGet({
+        return ajaxGet({
           url: settings.ibmCreds.url + "/v1/synthesize?text=" + encodeURIComponent(escapeHtml(text)) + "&voice=" + encodeURIComponent(voiceName) + "&accept=" + encodeURIComponent("audio/ogg;codecs=opus"),
           headers: {
             Authorization: "Basic " + btoa("apikey:" + settings.ibmCreds.apiKey)
           },
           responseType: "blob"
         })
-        return URL.createObjectURL(blob);
-      },
-      blobUrl => URL.revokeObjectURL(blobUrl)
+      }
     )
   }
   function fetchVoices(apiKey, url) {
@@ -983,14 +994,7 @@ function OpenaiTtsEngine() {
       throw error
     }
   }
-  this.speak = function(utterance, options, playbackState$) {
-    const urlPromise = getAudioUrl(utterance, options)
-    return playAudio(urlPromise, options, playbackState$)
-  }
-  this.prefetch = function(utterance, options) {
-    getAudioUrl(utterance, options)
-      .catch(console.error)
-  }
+  Object.assign(this, urlPlaybackMethods(getAudioUrl))
   this.getVoices = async function() {
     const openaiCreds = await getSetting("openaiCreds")
     const voiceList = openaiCreds ? (openaiCreds.voiceList || this.defaultVoiceList) : []
@@ -1003,7 +1007,7 @@ function OpenaiTtsEngine() {
   function getAudioUrl(text, {voice}) {
     assert(text && voice)
     const voiceId = voice.voiceName.slice(7)
-    return cache.fetchCached(
+    return cacheBlobUrl(
       JSON.stringify([text, voiceId]),
       async () => {
         const {openaiCreds} = await getSettings(["openaiCreds"])
@@ -1028,30 +1032,22 @@ function OpenaiTtsEngine() {
           })
         })
         if (!res.ok) throw await res.json().then(x => x.error)
-        return URL.createObjectURL(await res.blob())
-      },
-      blobUrl => URL.revokeObjectURL(blobUrl)
+        return res.blob()
+      }
     )
   }
 }
 
 
 function AzureTtsEngine() {
-  this.speak = function(utterance, options, playbackState$) {
-    const urlPromise = getAudioUrl(utterance, options)
-    return playAudio(urlPromise, options, playbackState$)
-  };
-  this.prefetch = function(utterance, options) {
-    getAudioUrl(utterance, options)
-      .catch(console.error)
-  };
+  Object.assign(this, urlPlaybackMethods(getAudioUrl))
   this.getVoices = async function() {
     try {
       const {azureCreds, azureVoices} = await getSettings(["azureCreds", "azureVoices"])
       if (!azureCreds) return []
       if (azureVoices && azureVoices.expire > Date.now()) return azureVoices.list
       const list = await this.fetchVoices(azureCreds.region, azureCreds.key)
-      await updateSettings({azureVoices: {list, expire: Date.now() + 24*3600*1000}})
+      await updateSettings({azureVoices: {list, expire: Date.now() + VOICE_LIST_TTL}})
       return list
     }
     catch (err) {
@@ -1080,7 +1076,7 @@ function AzureTtsEngine() {
   function getAudioUrl(text, {lang, voice}) {
     const matches = voice.voiceName.match(/^Azure .* - (\w+)$/)
     const voiceName = voice.lang + "-" + matches[1]
-    return cache.fetchCached(
+    return cacheBlobUrl(
       JSON.stringify([text, lang, voiceName]),
       async () => {
         const {azureCreds} = await getSettings(["azureCreds"])
@@ -1095,53 +1091,60 @@ function AzureTtsEngine() {
           body: `<speak version='1.0' xml:lang='${lang}'><voice name='${voiceName}'>${escapeXml(text)}</voice></speak>`
         })
         if (!res.ok) throw new Error("Server return " + res.status)
-        const blob = await res.blob()
-        return URL.createObjectURL(blob)
-      },
-      blobUrl => URL.revokeObjectURL(blobUrl)
+        return res.blob()
+      }
     )
   }
 }
 
 
-function PiperTtsEngine() {
+// Factory for the hosted-tool engines (Piper/Supertonic/NghiTTS). These delegate
+// synthesis to an iframe-hosted tool reached over a request/callback bridge.
+// config: {
+//   getTool$:      () => Observable resolving to the tool dispatcher (sendRequest)
+//   getCallbacks$: () => Observable of {type,...} playback events from the tool
+//   externalPlayback: whether to pass externalPlayback in the speak request
+// }
+function HostedToolTtsEngine(config) {
   let control = null
   let isSpeaking = false
   this.speak = function(utterance, options, onEvent) {
-    const piperPromise = rxjs.firstValueFrom(piperObservable)
+    const toolPromise = rxjs.firstValueFrom(config.getTool$())
     control = new rxjs.Subject()
     control
       .pipe(
         rxjs.startWith("speak"),
         rxjs.concatMap(async cmd => {
-          const piper = await piperPromise
+          const tool = await toolPromise
           switch (typeof cmd == "string" ? cmd : cmd.type) {
-            case "speak":
-              return piper.sendRequest("speak", {
+            case "speak": {
+              const request = {
                 utterance,
                 voiceName: options.voice.voiceName,
                 pitch: options.pitch,
                 rate: options.rate,
                 volume: options.volume,
-                externalPlayback: options.rate && options.rate != 1,
-              })
+              }
+              if (config.externalPlayback) request.externalPlayback = options.rate && options.rate != 1
+              return tool.sendRequest("speak", request)
+            }
             case "pause":
-              return piper.sendRequest("pause")
+              return tool.sendRequest("pause")
             case "resume":
-              return piper.sendRequest("resume")
+              return tool.sendRequest("resume")
             case "stop":
-              return piper.sendRequest("stop")
+              return tool.sendRequest("stop")
                 .then(() => Promise.reject({name: "interrupted", message: "Playback interrupted"}))
             case "forward":
-              return piper.sendRequest("forward")
+              return tool.sendRequest("forward")
             case "rewind":
-              return piper.sendRequest("rewind")
+              return tool.sendRequest("rewind")
             case "seek":
-              return piper.sendRequest("seek", {index: cmd.index})
+              return tool.sendRequest("seek", {index: cmd.index})
           }
         }),
         rxjs.ignoreElements(),
-        rxjs.mergeWith(piperCallbacks),
+        rxjs.mergeWith(config.getCallbacks$()),
         rxjs.map(event => {
           if (event.type == "error") throw event.error
           return event
@@ -1164,173 +1167,6 @@ function PiperTtsEngine() {
         isSpeaking = false
         control = null
       })
-  }
-  this.isSpeaking = function(callback) {
-    callback(isSpeaking)
-  }
-  this.pause = function() {
-    control?.next("pause")
-  }
-  this.resume = function() {
-    control?.next("resume")
-  }
-  this.stop = function() {
-    control?.next("stop")
-  }
-  this.forward = function() {
-    control?.next("forward")
-  }
-  this.rewind = function() {
-    control?.next("rewind")
-  }
-  this.seek = function(index) {
-    control?.next({type: "seek", index})
-  }
-}
-
-
-function SupertonicTtsEngine() {
-  let control = null
-  let isSpeaking = false
-  this.speak = function(utterance, options, onEvent) {
-    const supertonicPromise = rxjs.firstValueFrom(supertonic$)
-    control = new rxjs.Subject()
-    control.pipe(
-      rxjs.startWith("speak"),
-      rxjs.concatMap(async cmd => {
-        const supertonic = await supertonicPromise
-        switch (typeof cmd == "string" ? cmd : cmd.type) {
-          case "speak":
-            return supertonic.sendRequest("speak", {
-              utterance,
-              voiceName: options.voice.voiceName,
-              pitch: options.pitch,
-              rate: options.rate,
-              volume: options.volume,
-              externalPlayback: options.rate && options.rate != 1,
-            })
-          case "pause":
-            return supertonic.sendRequest("pause")
-          case "resume":
-            return supertonic.sendRequest("resume")
-          case "stop":
-            return supertonic.sendRequest("stop")
-              .then(() => Promise.reject({name: "interrupted", message: "Playback interrupted"}))
-          case "forward":
-            return supertonic.sendRequest("forward")
-          case "rewind":
-            return supertonic.sendRequest("rewind")
-          case "seek":
-            return supertonic.sendRequest("seek", {index: cmd.index})
-        }
-      }),
-      rxjs.ignoreElements(),
-      rxjs.mergeWith(supertonicCallbacks),
-      rxjs.map(event => {
-        if (event.type == "error") throw event.error
-        return event
-      }),
-      rxjs.takeWhile(event => event.type != "end")
-    )
-    .subscribe({
-      next(event) {
-        if (event.type == "start") isSpeaking = true
-        onEvent(event)
-      },
-      complete() {
-        onEvent({type: "end"})
-      },
-      error(err) {
-        if (err.name != "interrupted") onEvent({type: "error", error: err})
-      }
-    })
-    .add(() => {
-      isSpeaking = false
-      control = null
-    })
-  }
-  this.isSpeaking = function(callback) {
-    callback(isSpeaking)
-  }
-  this.pause = function() {
-    control?.next("pause")
-  }
-  this.resume = function() {
-    control?.next("resume")
-  }
-  this.stop = function() {
-    control?.next("stop")
-  }
-  this.forward = function() {
-    control?.next("forward")
-  }
-  this.rewind = function() {
-    control?.next("rewind")
-  }
-  this.seek = function(index) {
-    control?.next({type: "seek", index})
-  }
-}
-
-
-function NghiTtsEngine() {
-  let control = null
-  let isSpeaking = false
-  this.speak = function(utterance, options, onEvent) {
-    const nghiTtsPromise = rxjs.firstValueFrom(nghiTtsObservable)
-    control = new rxjs.Subject()
-    control.pipe(
-      rxjs.startWith("speak"),
-      rxjs.concatMap(async cmd => {
-        const nghiTts = await nghiTtsPromise
-        switch (typeof cmd == "string" ? cmd : cmd.type) {
-          case "speak":
-            return nghiTts.sendRequest("speak", {
-              utterance,
-              voiceName: options.voice.voiceName,
-              pitch: options.pitch,
-              rate: options.rate,
-              volume: options.volume,
-            })
-          case "pause":
-            return nghiTts.sendRequest("pause")
-          case "resume":
-            return nghiTts.sendRequest("resume")
-          case "stop":
-            return nghiTts.sendRequest("stop")
-              .then(() => Promise.reject({name: "interrupted", message: "Playback interrupted"}))
-          case "forward":
-            return nghiTts.sendRequest("forward")
-          case "rewind":
-            return nghiTts.sendRequest("rewind")
-          case "seek":
-            return nghiTts.sendRequest("seek", {index: cmd.index})
-        }
-      }),
-      rxjs.ignoreElements(),
-      rxjs.mergeWith(nghiTtsCallbacks),
-      rxjs.map(event => {
-        if (event.type == "error") throw event.error
-        return event
-      }),
-      rxjs.takeWhile(event => event.type != "end")
-    )
-    .subscribe({
-      next(event) {
-        if (event.type == "start") isSpeaking = true
-        onEvent(event)
-      },
-      complete() {
-        onEvent({type: "end"})
-      },
-      error(err) {
-        if (err.name != "interrupted") onEvent({type: "error", error: err})
-      }
-    })
-    .add(() => {
-      isSpeaking = false
-      control = null
-    })
   }
   this.isSpeaking = function(callback) {
     callback(isSpeaking)

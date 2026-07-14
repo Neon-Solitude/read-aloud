@@ -116,6 +116,18 @@ You can get the latest version of Read Aloud Extension from the [Mozilla Add-ons
 6. Click on "This Firefox" then click "Load Unpackaged Extension"
 7. Select the `manifest.json` file produced earlier.
 
+## Development
+
+The extension's page and service-worker JavaScript is bundled with [esbuild](https://esbuild.github.io/). The per-page bundles are generated into `build/js/` (git-ignored), so you must build before loading the extension from source:
+
+```sh
+npm install      # one-time
+npm run build    # regenerate build/js/*.js after any change to js/*.js
+npm test         # runs the build, then the regression suite
+```
+
+Then load the **repository root** as an unpacked extension (Chrome: `chrome://extensions` → *Load unpacked*). `npm run build` concatenates each page's ordered source list into a single bundle while preserving the classic global-script load order; the individual `js/*.js` sources remain the files you edit. `npm run package` builds and produces `build/package.zip` for distribution.
+
 ## Contribute
 
 - Star this GitHub repo :star:

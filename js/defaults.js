@@ -109,9 +109,14 @@ const settingsChange$ = rxjs.fromEventPattern(
   rxjs.share()
 )
 
+// The settings persisted for the current profile. getSettings/clearSettings
+// default to this list, so it lives in one place instead of being duplicated
+// (and drifting) between the two.
+const defaultSettingsKeys = ["voiceName", "rate", "pitch", "volume", "showHighlighting", "languages", "highlightFontSize", "highlightWindowSize", "preferredVoices", "useEmbeddedPlayer", "fixBtSilenceGap", "darkMode"];
+
 function getSettings(names) {
   return new Promise(function(fulfill) {
-    brapi.storage.local.get(names || ["voiceName", "rate", "pitch", "volume", "showHighlighting", "languages", "highlightFontSize", "highlightWindowSize", "preferredVoices", "useEmbeddedPlayer", "fixBtSilenceGap", "darkMode"], fulfill);
+    brapi.storage.local.get(names || defaultSettingsKeys, fulfill);
   });
 }
 
@@ -123,7 +128,7 @@ function updateSettings(items) {
 
 function clearSettings(names) {
   return new Promise(function(fulfill) {
-    brapi.storage.local.remove(names || ["voiceName", "rate", "pitch", "volume", "showHighlighting", "languages", "highlightFontSize", "highlightWindowSize", "preferredVoices", "useEmbeddedPlayer", "fixBtSilenceGap", "darkMode"], fulfill);
+    brapi.storage.local.remove(names || defaultSettingsKeys, fulfill);
   });
 }
 
@@ -203,82 +208,55 @@ function getVoiceLanguages(voice) {
   else return undefined
 }
 
+// The language codes the user has narrowed the voice list to, or null for "all":
+// the explicit `languages` setting when present, otherwise the browser's
+// accept-languages intersected with the languages that actually have voices.
+// (options.js treats null as "all voices"; languages.js coerces null to [].)
+function getSelectedLangs(settings, voices, acceptLangs) {
+  if (settings.languages) return settings.languages.split(',')
+  if (settings.languages == '') return null
+  const accept = new Set(acceptLangs.map(x => x.split('-', 1)[0]))
+  const langs = Object.keys(groupVoicesByLang(voices)).filter(x => accept.has(x))
+  return langs.length ? langs : null
+}
+
 function getFirstLanguage(voice) {
   if (voice.langs) return voice.langs[0]
   else return voice.lang
+}
+
+// Most voice-source predicates just match a prefix on voice.voiceName; keep them
+// declarative via this factory. isOfflineVoice / isMicrosoftCloud / isUseMyPhone
+// test other fields, and isNativeVoice / isPremiumVoice compose the set (below).
+function voiceNameMatches(re) {
+  return voice => re.test(voice.voiceName);
 }
 
 function isOfflineVoice(voice) {
   return voice.remote == false
 }
 
-function isGoogleNative(voice) {
-  return /^Google\s/.test(voice.voiceName);
-}
-
-function isChromeOSNative(voice) {
-  return /^Chrome\sOS\s/.test(voice.voiceName);
-}
-
-function isMacOSNative(voice) {
-  return /^MacOS /.test(voice.voiceName);
-}
-
-function isGoogleTranslate(voice) {
-  return /^GoogleTranslate /.test(voice.voiceName);
-}
-
-function isAmazonCloud(voice) {
-  return /^Amazon /.test(voice.voiceName);
-}
+const isGoogleNative = voiceNameMatches(/^Google\s/);
+const isChromeOSNative = voiceNameMatches(/^Chrome\sOS\s/);
+const isMacOSNative = voiceNameMatches(/^MacOS /);
+const isGoogleTranslate = voiceNameMatches(/^GoogleTranslate /);
+const isAmazonCloud = voiceNameMatches(/^Amazon /);
 
 function isMicrosoftCloud(voice) {
   return /^Microsoft /.test(voice.voiceName) && voice.voiceName.indexOf(' - ') == -1;
 }
 
-function isReadAloudCloud(voice) {
-  return /^ReadAloud /.test(voice.voiceName)
-}
-
-function isAmazonPolly(voice) {
-  return /^AmazonPolly /.test(voice.voiceName);
-}
-
-function isGoogleWavenet(voice) {
-  return /^Google(Standard|Wavenet|Neural2|Studio|Chirp-HD|Chirp3-HD|News|Casual|Polyglot) /.test(voice.voiceName);
-}
-
-function isGoogleStudio(voice) {
-  return /^Google(Studio) /.test(voice.voiceName);
-}
-
-function isIbmWatson(voice) {
-  return /^IBM-Watson /.test(voice.voiceName);
-}
-
-function isOpenai(voice) {
-  return /^OpenAI /.test(voice.voiceName);
-}
-
-function isAzure(voice) {
-  return /^Azure /.test(voice.voiceName);
-}
-
-function isPiperVoice(voice) {
-  return /^Piper /.test(voice.voiceName)
-}
-
-function isSupertonicVoice(voice) {
-  return /^Supertonic /.test(voice.voiceName)
-}
-
-function isNghiTtsVoice(voice) {
-  return /^NghiTTS /.test(voice.voiceName)
-}
-
-function isRHVoice(voice) {
-  return /^RHVoice /.test(voice.voiceName)
-}
+const isReadAloudCloud = voiceNameMatches(/^ReadAloud /);
+const isAmazonPolly = voiceNameMatches(/^AmazonPolly /);
+const isGoogleWavenet = voiceNameMatches(/^Google(Standard|Wavenet|Neural2|Studio|Chirp-HD|Chirp3-HD|News|Casual|Polyglot) /);
+const isGoogleStudio = voiceNameMatches(/^Google(Studio) /);
+const isIbmWatson = voiceNameMatches(/^IBM-Watson /);
+const isOpenai = voiceNameMatches(/^OpenAI /);
+const isAzure = voiceNameMatches(/^Azure /);
+const isPiperVoice = voiceNameMatches(/^Piper /);
+const isSupertonicVoice = voiceNameMatches(/^Supertonic /);
+const isNghiTtsVoice = voiceNameMatches(/^NghiTTS /);
+const isRHVoice = voiceNameMatches(/^RHVoice /);
 
 function isUseMyPhone(voice) {
   return voice.isUseMyPhone == true
@@ -556,19 +534,48 @@ function polyfills() {
 /**
  * HELPERS
  */
+// Minimal vanilla-DOM helpers used in place of jQuery. Not a jQuery clone --
+// just query + show/hide/toggle. show() mirrors jQuery: clear an inline
+// display:none, and if a stylesheet rule still hides the element, fall back to a
+// sensible default display for its tag.
+function qs(sel, root) { return (root || document).querySelector(sel) }
+function qsa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)) }
+function hide(el) { if (el) el.style.display = "none" }
+function show(el) {
+  if (!el) return
+  el.style.display = ""
+  if (getComputedStyle(el).display == "none") {
+    el.style.display = ({SPAN: "inline", A: "inline", IMG: "inline", BUTTON: "inline-block"})[el.tagName] || "block"
+  }
+}
+function toggle(el, visible) { if (visible) show(el); else hide(el) }
+// Create an element with optional class / text / html / attributes, appended to
+// a parent. Replaces the jQuery $("<tag>").addClass().text().attr().appendTo()
+// chains used to build UI.
+function makeEl(tag, opts) {
+  opts = opts || {}
+  const el = document.createElement(tag)
+  if (opts.className) el.className = opts.className
+  if (opts.text != null) el.textContent = opts.text
+  if (opts.html != null) el.innerHTML = opts.html
+  if (opts.attrs) for (const k in opts.attrs) el.setAttribute(k, opts.attrs[k])
+  if (opts.parent) opts.parent.appendChild(el)
+  return el
+}
+
 function domReady() {
   return new Promise(function(fulfill) {
-    $(fulfill);
+    if (document.readyState != "loading") fulfill()
+    else document.addEventListener("DOMContentLoaded", () => fulfill())
   })
 }
 
 function setI18nText() {
-  $("[data-i18n]").each(function() {
-    var key = $(this).data("i18n");
-    var text = brapi.i18n.getMessage(key);
-    if ($(this).is("input")) $(this).val(text);
-    else $(this).text(text);
-  })
+  for (const el of qsa("[data-i18n]")) {
+    const text = brapi.i18n.getMessage(el.dataset.i18n)
+    if (el.tagName == "INPUT") el.value = text
+    else el.textContent = text
+  }
 }
 
 function escapeHtml(text) {
@@ -758,6 +765,39 @@ function bgPageInvoke(method, args) {
       else fulfill(res);
     })
   })
+}
+
+// A dropped connection to a not-yet-ready receiver surfaces as one of these
+// transient runtime errors; annotate it with the method for easier debugging.
+// Playback cancellation protocol. A deliberate stop is signalled by erroring the
+// playback stream with an object carrying this well-known name, so every layer
+// (speech.js, document.js, popup.js) can tell an intentional cancel apart from a
+// genuine synthesis/network failure. Use these helpers instead of hand-writing
+// the literal, so the name can never drift.
+function makeCancellation() {
+  return {name: "CancellationException", message: "Playback cancelled"}
+}
+function isCancellation(err) {
+  return err != null && err.name == "CancellationException"
+}
+
+function rethrowMessagingError(err, method) {
+  if (/^(A listener indicated|Could not establish)/.test(err.message)) throw new Error(err.message + " " + method)
+  throw err
+}
+
+// Send a message to a registerMessageListener("<dest>", ...) target and unwrap
+// its {error} envelope. Used by sendToPlayer / sendToOffscreen / sendToPdfViewer.
+async function sendMessage(dest, message) {
+  message.dest = dest
+  const result = await Promise.resolve(brapi.runtime.sendMessage(message))
+    .catch(err => rethrowMessagingError(err, message.method))
+  if (result && result.error) throw result.error
+  return result
+}
+
+function sendToPlayer(message) {
+  return sendMessage("player", message)
 }
 
 function detectTabLanguage(tabId) {
@@ -1000,8 +1040,7 @@ var languageTable = (function() {
     ['ar-TN', 'Arabic (Tunisia)'],
     ['ar-YE', 'Arabic (Yemen)'],
     ['az', 'Azeri (Latin)'],
-    ['az-AZ', 'Azeri (Latin) (Azerbaijan)'],
-    ['az-AZ', 'Azeri (Cyrillic) (Azerbaijan)'],
+    ['az-AZ', 'Azeri (Azerbaijan)'],
     ['be', 'Belarusian'],
     ['be-BY', 'Belarusian (Belarus)'],
     ['bg', 'Bulgarian'],
@@ -1049,7 +1088,6 @@ var languageTable = (function() {
     ['es-CR', 'Spanish (Costa Rica)'],
     ['es-DO', 'Spanish (Dominican Republic)'],
     ['es-EC', 'Spanish (Ecuador)'],
-    ['es-ES', 'Spanish (Castilian)'],
     ['es-ES', 'Spanish (Spain)'],
     ['es-GT', 'Spanish (Guatemala)'],
     ['es-HN', 'Spanish (Honduras)'],
@@ -1132,8 +1170,8 @@ var languageTable = (function() {
     ['ms-MY', 'Malay (Malaysia)'],
     ['mt', 'Maltese'],
     ['mt-MT', 'Maltese (Malta)'],
-    ['nb', 'Norwegian (Bokm?l)'],
-    ['nb-NO', 'Norwegian (Bokm?l) (Norway)'],
+    ['nb', 'Norwegian (Bokmål)'],
+    ['nb-NO', 'Norwegian (Bokmål) (Norway)'],
     ['nl', 'Dutch'],
     ['nl-BE', 'Dutch (Belgium)'],
     ['nl-NL', 'Dutch (Netherlands)'],
@@ -1160,25 +1198,17 @@ var languageTable = (function() {
     ['sa', 'Sanskrit'],
     ['sa-IN', 'Sanskrit (India)'],
     ['se', 'Sami (Northern)'],
-    ['se-FI', 'Sami (Northern) (Finland)'],
-    ['se-FI', 'Sami (Skolt) (Finland)'],
-    ['se-FI', 'Sami (Inari) (Finland)'],
-    ['se-NO', 'Sami (Northern) (Norway)'],
-    ['se-NO', 'Sami (Lule) (Norway)'],
-    ['se-NO', 'Sami (Southern) (Norway)'],
-    ['se-SE', 'Sami (Northern) (Sweden)'],
-    ['se-SE', 'Sami (Lule) (Sweden)'],
-    ['se-SE', 'Sami (Southern) (Sweden)'],
+    ['se-FI', 'Sami (Finland)'],
+    ['se-NO', 'Sami (Norway)'],
+    ['se-SE', 'Sami (Sweden)'],
     ['sk', 'Slovak'],
     ['sk-SK', 'Slovak (Slovakia)'],
     ['sl', 'Slovenian'],
     ['sl-SI', 'Slovenian (Slovenia)'],
     ['sq', 'Albanian'],
     ['sq-AL', 'Albanian (Albania)'],
-    ['sr-BA', 'Serbian (Latin) (Bosnia and Herzegovina)'],
-    ['sr-BA', 'Serbian (Cyrillic) (Bosnia and Herzegovina)'],
-    ['sr-SP', 'Serbian (Latin) (Serbia and Montenegro)'],
-    ['sr-SP', 'Serbian (Cyrillic) (Serbia and Montenegro)'],
+    ['sr-BA', 'Serbian (Bosnia and Herzegovina)'],
+    ['sr-SP', 'Serbian (Serbia and Montenegro)'],
     ['sv', 'Swedish'],
     ['sv-FI', 'Swedish (Finland)'],
     ['sv-SE', 'Swedish (Sweden)'],
@@ -1206,8 +1236,7 @@ var languageTable = (function() {
     ['ur', 'Urdu'],
     ['ur-PK', 'Urdu (Islamic Republic of Pakistan)'],
     ['uz', 'Uzbek (Latin)'],
-    ['uz-UZ', 'Uzbek (Latin) (Uzbekistan)'],
-    ['uz-UZ', 'Uzbek (Cyrillic) (Uzbekistan)'],
+    ['uz-UZ', 'Uzbek (Uzbekistan)'],
     ['vi', 'Vietnamese'],
     ['vi-VN', 'Vietnamese (Viet Nam)'],
     ['xh', 'Xhosa'],
