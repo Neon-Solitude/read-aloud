@@ -27,8 +27,8 @@ const OUT_DIR = path.join(ROOT, "build", "js");
 // Keep these in lockstep with the <script> tags in the corresponding *.html
 // (and background.js's importScripts for the "background" service-worker entry).
 const ENTRIES = {
-  "advanced-options": ["rxjs.umd.min", "jquery-3.7.1.min", "defaults", "advanced-options"],
-  "connect-phone": ["rxjs.umd.min", "jquery-3.7.1.min", "defaults", "connect-phone"],
+  "advanced-options": ["rxjs.umd.min", "defaults", "advanced-options"],
+  "connect-phone": ["rxjs.umd.min", "defaults", "connect-phone"],
   "custom-voices": ["rxjs.umd.min", "jquery-3.7.1.min", "aws-sdk", "defaults", "tts-engines", "custom-voices"],
   "languages": ["rxjs.umd.min", "jquery-3.7.1.min", "defaults", "tts-engines", "languages"],
   "offscreen": ["rxjs.umd.min", "defaults", "messaging", "offscreen"],
@@ -36,7 +36,7 @@ const ENTRIES = {
   "pdf-viewer": ["rxjs.umd.min", "defaults", "messaging", "pdf-viewer"],
   "player": ["rxjs.umd.min", "jquery-3.7.1.min", "peerjs.min", "defaults", "messaging", "google-translate", "aws-sdk", "tts-engines", "speech", "document", "player"],
   "popup": ["rxjs.umd.min", "jquery-3.7.1.min", "defaults", "messaging", "popup"],
-  "report": ["rxjs.umd.min", "jquery-3.7.1.min", "defaults", "report"],
+  "report": ["rxjs.umd.min", "defaults", "report"],
   "shortcuts": ["rxjs.umd.min", "defaults"],
   // Service worker (manifest background.service_worker -> background.js, which
   // importScripts this bundle). Mirrors background.js's original importScripts.

@@ -1,11 +1,11 @@
 
-$(onDomReady)
+domReady().then(onDomReady)
 
 function onDomReady() {
   setState("loading")
   sendToPlayer({method: "startPairing"})
     .then(pairingCode => {
-      $("#pairing-code").text(String(pairingCode).slice(0,3) + "-" + String(pairingCode).slice(3))
+      qs("#pairing-code").textContent = String(pairingCode).slice(0,3) + "-" + String(pairingCode).slice(3)
       setState("pairing")
       waitPairing()
     })
@@ -15,10 +15,10 @@ function onDomReady() {
     })
 
   //event handlers
-  $("button.close").click(function() {
+  qs("button.close").addEventListener("click", function() {
     history.back()
   })
-  $("#try-again-button").click(function() {
+  qs("#try-again-button").addEventListener("click", function() {
     setState("pairing")
     waitPairing()
   })
@@ -45,7 +45,6 @@ function waitPairing() {
 
 function setState(newState) {
   for (const state of ["loading", "pairing", "success", "fail"]) {
-    if (state == newState) $("#state-" + state).show()
-    else $("#state-" + state).hide()
+    toggle(qs("#state-" + state), state == newState)
   }
 }

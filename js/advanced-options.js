@@ -1,13 +1,13 @@
 
 Promise.all([getSettings(), domReady()]).then(([settings]) => {
-  $("button.close")
-    .show()
-    .click(() => history.back())
+  const close = qs("button.close")
+  show(close)
+  close.addEventListener("click", () => history.back())
 
-  $("#fix-bt-silence-gap")
-    .prop("checked", settings.fixBtSilenceGap)
-    .change(function() {
-      updateSettings({fixBtSilenceGap: this.checked})
-        .catch(console.error)
-    })
+  const checkbox = qs("#fix-bt-silence-gap")
+  checkbox.checked = settings.fixBtSilenceGap
+  checkbox.addEventListener("change", function() {
+    updateSettings({fixBtSilenceGap: this.checked})
+      .catch(console.error)
+  })
 })

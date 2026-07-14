@@ -534,19 +534,35 @@ function polyfills() {
 /**
  * HELPERS
  */
+// Minimal vanilla-DOM helpers used in place of jQuery. Not a jQuery clone --
+// just query + show/hide/toggle. show() mirrors jQuery: clear an inline
+// display:none, and if a stylesheet rule still hides the element, fall back to a
+// sensible default display for its tag.
+function qs(sel, root) { return (root || document).querySelector(sel) }
+function qsa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)) }
+function hide(el) { if (el) el.style.display = "none" }
+function show(el) {
+  if (!el) return
+  el.style.display = ""
+  if (getComputedStyle(el).display == "none") {
+    el.style.display = ({SPAN: "inline", A: "inline", IMG: "inline", BUTTON: "inline-block"})[el.tagName] || "block"
+  }
+}
+function toggle(el, visible) { if (visible) show(el); else hide(el) }
+
 function domReady() {
   return new Promise(function(fulfill) {
-    $(fulfill);
+    if (document.readyState != "loading") fulfill()
+    else document.addEventListener("DOMContentLoaded", () => fulfill())
   })
 }
 
 function setI18nText() {
-  $("[data-i18n]").each(function() {
-    var key = $(this).data("i18n");
-    var text = brapi.i18n.getMessage(key);
-    if ($(this).is("input")) $(this).val(text);
-    else $(this).text(text);
-  })
+  for (const el of qsa("[data-i18n]")) {
+    const text = brapi.i18n.getMessage(el.dataset.i18n)
+    if (el.tagName == "INPUT") el.value = text
+    else el.textContent = text
+  }
 }
 
 function escapeHtml(text) {

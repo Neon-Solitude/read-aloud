@@ -1,27 +1,32 @@
-$(function() {
+domReady().then(function() {
   var queryString = getQueryString();
   if (queryString.referer) {
-    $("button.close").show()
-      .click(function() {
-        history.back();
-      })
+    const close = qs("button.close")
+    show(close)
+    close.addEventListener("click", function() {
+      history.back();
+    })
   }
 
-  sendToPlayer({method: "getLastUrl"}).then(url => $("#txt-url").val(url))
-  $("#txt-comment").focus();
-  $("#btn-submit").click(submit);
+  sendToPlayer({method: "getLastUrl"}).then(url => qs("#txt-url").value = url)
+  qs("#txt-comment").focus();
+  qs("#btn-submit").addEventListener("click", submit);
 });
 
 function submit() {
-  $("#btn-submit, #lbl-status, #lbl-error").hide();
-  $("#img-spinner").show();
-  bgPageInvoke("reportIssue", [$("#txt-url").val(), $("#txt-comment").val()])
+  qsa("#btn-submit, #lbl-status, #lbl-error").forEach(hide);
+  show(qs("#img-spinner"));
+  bgPageInvoke("reportIssue", [qs("#txt-url").value, qs("#txt-comment").value])
     .then(function() {
-      $("#img-spinner").hide();
-      $("#lbl-status").text("Issue has been reported, thank you!").show();
+      hide(qs("#img-spinner"));
+      const status = qs("#lbl-status");
+      status.textContent = "Issue has been reported, thank you!";
+      show(status);
     },
     function() {
-      $("#img-spinner").hide();
-      $("#lbl-error").text("Server could not be contacted, please email me directly at hai.phan@gmail.com. Thank you!").show();
+      hide(qs("#img-spinner"));
+      const error = qs("#lbl-error");
+      error.textContent = "Server could not be contacted, please email me directly at hai.phan@gmail.com. Thank you!";
+      show(error);
     })
 }
