@@ -34,7 +34,7 @@ const ENTRIES = {
   "offscreen": ["rxjs.umd.min", "defaults", "messaging", "offscreen"],
   "options": ["rxjs.umd.min", "jquery-3.7.1.min", "aws-sdk", "defaults", "messaging", "tts-engines", "options"],
   "pdf-viewer": ["rxjs.umd.min", "defaults", "messaging", "pdf-viewer"],
-  "player": ["rxjs.umd.min", "jquery-3.7.1.min", "peerjs.min", "defaults", "messaging", "google-translate", "aws-sdk", "tts-engines", "speech", "document", "player"],
+  "player": ["rxjs.umd.min", "peerjs.min", "defaults", "messaging", "google-translate", "aws-sdk", "tts-engines", "speech", "document", "player"],
   "popup": ["rxjs.umd.min", "jquery-3.7.1.min", "defaults", "messaging", "popup"],
   "report": ["rxjs.umd.min", "defaults", "report"],
   "shortcuts": ["rxjs.umd.min", "defaults"],

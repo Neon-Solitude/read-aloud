@@ -29,8 +29,8 @@ function registerHostedTool(spec) {
     document.body.appendChild(f)
   }
   function raiseFrame() {
-    const maxZ = $('iframe').get().reduce((max, f) => Math.max(max, Number(f.style.zIndex) || 0), 0)
-    $('#' + spec.frameId).css('z-index', maxZ + 1)
+    const maxZ = qsa('iframe').reduce((max, f) => Math.max(max, Number(f.style.zIndex) || 0), 0)
+    qs('#' + spec.frameId).style.zIndex = maxZ + 1
   }
   const observable = rxjs.defer(() => {
       createFrame()
@@ -216,21 +216,22 @@ document.addEventListener("DOMContentLoaded", initialize)
 async function initialize() {
   setI18nText()
 
-  $("#hidethistab-link")
-    .toggle(canUseEmbeddedPlayer() && !(await getSettings()).useEmbeddedPlayer)
-    .click(function() {
-      $("#dialog-backdrop, #hidethistab-dialog").show()
-    })
+  const hidethistabLink = qs("#hidethistab-link")
+  toggle(hidethistabLink, canUseEmbeddedPlayer() && !(await getSettings()).useEmbeddedPlayer)
+  hidethistabLink.addEventListener("click", function() {
+    qsa("#dialog-backdrop, #hidethistab-dialog").forEach(show)
+  })
 
-  $("#hidethistab-dialog .btn, #hidethistab-dialog .close")
-    .click(function(event) {
-      $("#dialog-backdrop, #hidethistab-dialog").hide()
-      if ($(event.target).is(".btn-ok")) {
+  for (const btn of qsa("#hidethistab-dialog .btn, #hidethistab-dialog .close")) {
+    btn.addEventListener("click", function(event) {
+      qsa("#dialog-backdrop, #hidethistab-dialog").forEach(hide)
+      if (event.target.matches(".btn-ok")) {
         updateSettings({useEmbeddedPlayer: true})
           .then(() => window.close())
           .catch(console.error)
       }
     })
+  }
 }
 
 function playText(text, opts) {
@@ -380,9 +381,9 @@ var requestAudioPlaybackPermission = lazy(async function() {
   const thisTab = await brapi.tabs.getCurrent()
   const prevTab = await brapi.tabs.query({windowId: thisTab.windowId, active: true}).then(tabs => tabs[0])
   await brapi.tabs.update(thisTab.id, {active: true})
-  $("#dialog-backdrop, #audio-playback-permission-dialog").show()
+  qsa("#dialog-backdrop, #audio-playback-permission-dialog").forEach(show)
   await new Audio(brapi.runtime.getURL("sound/silence.mp3")).play()
-  $("#dialog-backdrop, #audio-playback-permission-dialog").hide()
+  qsa("#dialog-backdrop, #audio-playback-permission-dialog").forEach(hide)
   await brapi.tabs.update(prevTab.id, {active: true})
 })
 
