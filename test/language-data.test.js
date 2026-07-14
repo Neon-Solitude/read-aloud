@@ -1,10 +1,8 @@
 "use strict";
 /*
- * Tripwire for the language datasets. These assert the CURRENT (partly buggy)
- * state so the baseline is green, and act as a checklist for Phase 4, which
- * moves the data to JSON, dedupes it, and fixes the mojibake. When Phase 4
- * lands, flip the two "known issue" tests to assert zero duplicates / no
- * mojibake and remove the documented lists below.
+ * Integrity checks for the language datasets. Phase 4 deduped languageTable and
+ * fixed the mojibake; these now assert the data stays clean (no duplicate codes,
+ * no replacement characters) so a future edit can't silently reintroduce either.
  */
 
 const { test } = require("node:test");
@@ -29,25 +27,12 @@ test("languageTable parses into a non-trivial set of entries", () => {
   assert.ok(pairs.length > 200, `expected >200 entries, got ${pairs.length}`);
 });
 
-test("KNOWN ISSUE (fix in Phase 4): duplicate language codes silently collapse", () => {
-  // The live `new Map([...])` keeps only the last value for each duplicate key,
-  // dropping the Cyrillic/alternate variants below. Documented, not yet fixed.
-  assert.deepEqual(duplicateCodes(), [
-    "az-AZx2",
-    "es-ESx2",
-    "se-FIx3",
-    "se-NOx3",
-    "se-SEx3",
-    "sr-BAx2",
-    "sr-SPx2",
-    "uz-UZx2",
-  ]);
+test("languageTable has no duplicate language codes", () => {
+  // Duplicate keys silently collapse in `new Map([...])`, dropping variants.
+  assert.deepEqual(duplicateCodes(), []);
 });
 
-test("KNOWN ISSUE (fix in Phase 4): Norwegian names contain mojibake", () => {
-  const mojibake = pairs.filter((p) => p.name.includes("?")).map((p) => p.name);
-  assert.deepEqual(mojibake, [
-    "Norwegian (Bokm?l)",
-    "Norwegian (Bokm?l) (Norway)",
-  ]);
+test("languageTable names are free of mojibake / replacement characters", () => {
+  const bad = pairs.filter((p) => /[?�]/.test(p.name)).map((p) => p.name);
+  assert.deepEqual(bad, []);
 });

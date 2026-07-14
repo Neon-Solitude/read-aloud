@@ -11,6 +11,7 @@ const assert = require("node:assert/strict");
 const { loadDecls } = require("./harness/extract.js");
 
 const V = loadDecls("js/defaults.js", [
+  "voiceNameMatches",
   "isGoogleNative",
   "isGoogleTranslate",
   "isAmazonCloud",

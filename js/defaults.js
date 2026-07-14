@@ -109,9 +109,14 @@ const settingsChange$ = rxjs.fromEventPattern(
   rxjs.share()
 )
 
+// The settings persisted for the current profile. getSettings/clearSettings
+// default to this list, so it lives in one place instead of being duplicated
+// (and drifting) between the two.
+const defaultSettingsKeys = ["voiceName", "rate", "pitch", "volume", "showHighlighting", "languages", "highlightFontSize", "highlightWindowSize", "preferredVoices", "useEmbeddedPlayer", "fixBtSilenceGap", "darkMode"];
+
 function getSettings(names) {
   return new Promise(function(fulfill) {
-    brapi.storage.local.get(names || ["voiceName", "rate", "pitch", "volume", "showHighlighting", "languages", "highlightFontSize", "highlightWindowSize", "preferredVoices", "useEmbeddedPlayer", "fixBtSilenceGap", "darkMode"], fulfill);
+    brapi.storage.local.get(names || defaultSettingsKeys, fulfill);
   });
 }
 
@@ -123,7 +128,7 @@ function updateSettings(items) {
 
 function clearSettings(names) {
   return new Promise(function(fulfill) {
-    brapi.storage.local.remove(names || ["voiceName", "rate", "pitch", "volume", "showHighlighting", "languages", "highlightFontSize", "highlightWindowSize", "preferredVoices", "useEmbeddedPlayer", "fixBtSilenceGap", "darkMode"], fulfill);
+    brapi.storage.local.remove(names || defaultSettingsKeys, fulfill);
   });
 }
 
@@ -208,77 +213,38 @@ function getFirstLanguage(voice) {
   else return voice.lang
 }
 
+// Most voice-source predicates just match a prefix on voice.voiceName; keep them
+// declarative via this factory. isOfflineVoice / isMicrosoftCloud / isUseMyPhone
+// test other fields, and isNativeVoice / isPremiumVoice compose the set (below).
+function voiceNameMatches(re) {
+  return voice => re.test(voice.voiceName);
+}
+
 function isOfflineVoice(voice) {
   return voice.remote == false
 }
 
-function isGoogleNative(voice) {
-  return /^Google\s/.test(voice.voiceName);
-}
-
-function isChromeOSNative(voice) {
-  return /^Chrome\sOS\s/.test(voice.voiceName);
-}
-
-function isMacOSNative(voice) {
-  return /^MacOS /.test(voice.voiceName);
-}
-
-function isGoogleTranslate(voice) {
-  return /^GoogleTranslate /.test(voice.voiceName);
-}
-
-function isAmazonCloud(voice) {
-  return /^Amazon /.test(voice.voiceName);
-}
+const isGoogleNative = voiceNameMatches(/^Google\s/);
+const isChromeOSNative = voiceNameMatches(/^Chrome\sOS\s/);
+const isMacOSNative = voiceNameMatches(/^MacOS /);
+const isGoogleTranslate = voiceNameMatches(/^GoogleTranslate /);
+const isAmazonCloud = voiceNameMatches(/^Amazon /);
 
 function isMicrosoftCloud(voice) {
   return /^Microsoft /.test(voice.voiceName) && voice.voiceName.indexOf(' - ') == -1;
 }
 
-function isReadAloudCloud(voice) {
-  return /^ReadAloud /.test(voice.voiceName)
-}
-
-function isAmazonPolly(voice) {
-  return /^AmazonPolly /.test(voice.voiceName);
-}
-
-function isGoogleWavenet(voice) {
-  return /^Google(Standard|Wavenet|Neural2|Studio|Chirp-HD|Chirp3-HD|News|Casual|Polyglot) /.test(voice.voiceName);
-}
-
-function isGoogleStudio(voice) {
-  return /^Google(Studio) /.test(voice.voiceName);
-}
-
-function isIbmWatson(voice) {
-  return /^IBM-Watson /.test(voice.voiceName);
-}
-
-function isOpenai(voice) {
-  return /^OpenAI /.test(voice.voiceName);
-}
-
-function isAzure(voice) {
-  return /^Azure /.test(voice.voiceName);
-}
-
-function isPiperVoice(voice) {
-  return /^Piper /.test(voice.voiceName)
-}
-
-function isSupertonicVoice(voice) {
-  return /^Supertonic /.test(voice.voiceName)
-}
-
-function isNghiTtsVoice(voice) {
-  return /^NghiTTS /.test(voice.voiceName)
-}
-
-function isRHVoice(voice) {
-  return /^RHVoice /.test(voice.voiceName)
-}
+const isReadAloudCloud = voiceNameMatches(/^ReadAloud /);
+const isAmazonPolly = voiceNameMatches(/^AmazonPolly /);
+const isGoogleWavenet = voiceNameMatches(/^Google(Standard|Wavenet|Neural2|Studio|Chirp-HD|Chirp3-HD|News|Casual|Polyglot) /);
+const isGoogleStudio = voiceNameMatches(/^Google(Studio) /);
+const isIbmWatson = voiceNameMatches(/^IBM-Watson /);
+const isOpenai = voiceNameMatches(/^OpenAI /);
+const isAzure = voiceNameMatches(/^Azure /);
+const isPiperVoice = voiceNameMatches(/^Piper /);
+const isSupertonicVoice = voiceNameMatches(/^Supertonic /);
+const isNghiTtsVoice = voiceNameMatches(/^NghiTTS /);
+const isRHVoice = voiceNameMatches(/^RHVoice /);
 
 function isUseMyPhone(voice) {
   return voice.isUseMyPhone == true
@@ -1021,8 +987,7 @@ var languageTable = (function() {
     ['ar-TN', 'Arabic (Tunisia)'],
     ['ar-YE', 'Arabic (Yemen)'],
     ['az', 'Azeri (Latin)'],
-    ['az-AZ', 'Azeri (Latin) (Azerbaijan)'],
-    ['az-AZ', 'Azeri (Cyrillic) (Azerbaijan)'],
+    ['az-AZ', 'Azeri (Azerbaijan)'],
     ['be', 'Belarusian'],
     ['be-BY', 'Belarusian (Belarus)'],
     ['bg', 'Bulgarian'],
@@ -1070,7 +1035,6 @@ var languageTable = (function() {
     ['es-CR', 'Spanish (Costa Rica)'],
     ['es-DO', 'Spanish (Dominican Republic)'],
     ['es-EC', 'Spanish (Ecuador)'],
-    ['es-ES', 'Spanish (Castilian)'],
     ['es-ES', 'Spanish (Spain)'],
     ['es-GT', 'Spanish (Guatemala)'],
     ['es-HN', 'Spanish (Honduras)'],
@@ -1153,8 +1117,8 @@ var languageTable = (function() {
     ['ms-MY', 'Malay (Malaysia)'],
     ['mt', 'Maltese'],
     ['mt-MT', 'Maltese (Malta)'],
-    ['nb', 'Norwegian (Bokm?l)'],
-    ['nb-NO', 'Norwegian (Bokm?l) (Norway)'],
+    ['nb', 'Norwegian (Bokmål)'],
+    ['nb-NO', 'Norwegian (Bokmål) (Norway)'],
     ['nl', 'Dutch'],
     ['nl-BE', 'Dutch (Belgium)'],
     ['nl-NL', 'Dutch (Netherlands)'],
@@ -1181,25 +1145,17 @@ var languageTable = (function() {
     ['sa', 'Sanskrit'],
     ['sa-IN', 'Sanskrit (India)'],
     ['se', 'Sami (Northern)'],
-    ['se-FI', 'Sami (Northern) (Finland)'],
-    ['se-FI', 'Sami (Skolt) (Finland)'],
-    ['se-FI', 'Sami (Inari) (Finland)'],
-    ['se-NO', 'Sami (Northern) (Norway)'],
-    ['se-NO', 'Sami (Lule) (Norway)'],
-    ['se-NO', 'Sami (Southern) (Norway)'],
-    ['se-SE', 'Sami (Northern) (Sweden)'],
-    ['se-SE', 'Sami (Lule) (Sweden)'],
-    ['se-SE', 'Sami (Southern) (Sweden)'],
+    ['se-FI', 'Sami (Finland)'],
+    ['se-NO', 'Sami (Norway)'],
+    ['se-SE', 'Sami (Sweden)'],
     ['sk', 'Slovak'],
     ['sk-SK', 'Slovak (Slovakia)'],
     ['sl', 'Slovenian'],
     ['sl-SI', 'Slovenian (Slovenia)'],
     ['sq', 'Albanian'],
     ['sq-AL', 'Albanian (Albania)'],
-    ['sr-BA', 'Serbian (Latin) (Bosnia and Herzegovina)'],
-    ['sr-BA', 'Serbian (Cyrillic) (Bosnia and Herzegovina)'],
-    ['sr-SP', 'Serbian (Latin) (Serbia and Montenegro)'],
-    ['sr-SP', 'Serbian (Cyrillic) (Serbia and Montenegro)'],
+    ['sr-BA', 'Serbian (Bosnia and Herzegovina)'],
+    ['sr-SP', 'Serbian (Serbia and Montenegro)'],
     ['sv', 'Swedish'],
     ['sv-FI', 'Swedish (Finland)'],
     ['sv-SE', 'Swedish (Sweden)'],
@@ -1227,8 +1183,7 @@ var languageTable = (function() {
     ['ur', 'Urdu'],
     ['ur-PK', 'Urdu (Islamic Republic of Pakistan)'],
     ['uz', 'Uzbek (Latin)'],
-    ['uz-UZ', 'Uzbek (Latin) (Uzbekistan)'],
-    ['uz-UZ', 'Uzbek (Cyrillic) (Uzbekistan)'],
+    ['uz-UZ', 'Uzbek (Uzbekistan)'],
     ['vi', 'Vietnamese'],
     ['vi-VN', 'Vietnamese (Viet Nam)'],
     ['xh', 'Xhosa'],

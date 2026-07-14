@@ -31,6 +31,7 @@ const stubs = {
 
 // Predicates the registry references (plus their transitive helpers).
 const PREDICATES = [
+  "voiceNameMatches",
   "isPiperVoice", "isSupertonicVoice", "isNghiTtsVoice", "isAzure", "isOpenai",
   "isUseMyPhone", "isGoogleTranslate", "isAmazonPolly", "isGoogleWavenet",
   "isIbmWatson", "isPremiumVoice", "isReadAloudCloud", "isGoogleNative",

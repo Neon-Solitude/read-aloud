@@ -17,7 +17,7 @@ const engineRegistry = [
   {match: isIbmWatson, get: () => ibmWatsonTtsEngine},
   {match: voice => isPremiumVoice(voice) || isReadAloudCloud(voice), get: options => {premiumTtsEngine.prepare(options); return premiumTtsEngine}},
   {match: isGoogleNative, get: () => new TimeoutTtsEngine(browserTtsEngine, 3*1000, 16*1000)},
-]
+];
 
 
 function Speech(texts, options) {
