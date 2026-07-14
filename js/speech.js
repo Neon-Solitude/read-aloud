@@ -1,4 +1,25 @@
 
+// Ordered voice -> engine routing table. pickEngine() returns the first entry
+// whose match(voice) is true, falling back to the browser engine, so order is
+// significant. get(options) resolves the engine instance; a few entries have
+// side effects (Premium.prepare) or build a fresh wrapper per session
+// (GoogleNative's TimeoutTtsEngine).
+const engineRegistry = [
+  {match: isPiperVoice, get: () => piperTtsEngine},
+  {match: isSupertonicVoice, get: () => supertonicTtsEngine},
+  {match: isNghiTtsVoice, get: () => nghiTtsEngine},
+  {match: isAzure, get: () => azureTtsEngine},
+  {match: isOpenai, get: () => openaiTtsEngine},
+  {match: isUseMyPhone, get: () => phoneTtsEngine},
+  {match: voice => isGoogleTranslate(voice) && !/\s(Hebrew|Telugu)$/.test(voice.voiceName), get: () => googleTranslateTtsEngine},
+  {match: isAmazonPolly, get: () => amazonPollyTtsEngine},
+  {match: isGoogleWavenet, get: () => googleWavenetTtsEngine},
+  {match: isIbmWatson, get: () => ibmWatsonTtsEngine},
+  {match: voice => isPremiumVoice(voice) || isReadAloudCloud(voice), get: options => {premiumTtsEngine.prepare(options); return premiumTtsEngine}},
+  {match: isGoogleNative, get: () => new TimeoutTtsEngine(browserTtsEngine, 3*1000, 16*1000)},
+]
+
+
 function Speech(texts, options) {
   options.rate = (options.rate || 1) * (isGoogleNative(options.voice) ? 0.9 : 1);
 
@@ -25,24 +46,8 @@ function Speech(texts, options) {
   this.gotoEnd = () => cmd$.next({name: "gotoEnd"})
 
   function pickEngine() {
-    if (isPiperVoice(options.voice)) return piperTtsEngine;
-    if (isSupertonicVoice(options.voice)) return supertonicTtsEngine;
-    if (isNghiTtsVoice(options.voice)) return nghiTtsEngine;
-    if (isAzure(options.voice)) return azureTtsEngine;
-    if (isOpenai(options.voice)) return openaiTtsEngine;
-    if (isUseMyPhone(options.voice)) return phoneTtsEngine;
-    if (isGoogleTranslate(options.voice) && !/\s(Hebrew|Telugu)$/.test(options.voice.voiceName)) {
-      return googleTranslateTtsEngine
-    }
-    if (isAmazonPolly(options.voice)) return amazonPollyTtsEngine;
-    if (isGoogleWavenet(options.voice)) return googleWavenetTtsEngine;
-    if (isIbmWatson(options.voice)) return ibmWatsonTtsEngine;
-    if (isPremiumVoice(options.voice) || isReadAloudCloud(options.voice)) {
-      premiumTtsEngine.prepare(options)
-      return premiumTtsEngine;
-    }
-    if (isGoogleNative(options.voice)) return new TimeoutTtsEngine(browserTtsEngine, 3*1000, 16*1000);
-    return browserTtsEngine;
+    const entry = engineRegistry.find(e => e.match(options.voice))
+    return entry ? entry.get(options) : browserTtsEngine
   }
 
   function getChunks(text) {
