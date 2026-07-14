@@ -208,6 +208,18 @@ function getVoiceLanguages(voice) {
   else return undefined
 }
 
+// The language codes the user has narrowed the voice list to, or null for "all":
+// the explicit `languages` setting when present, otherwise the browser's
+// accept-languages intersected with the languages that actually have voices.
+// (options.js treats null as "all voices"; languages.js coerces null to [].)
+function getSelectedLangs(settings, voices, acceptLangs) {
+  if (settings.languages) return settings.languages.split(',')
+  if (settings.languages == '') return null
+  const accept = new Set(acceptLangs.map(x => x.split('-', 1)[0]))
+  const langs = Object.keys(groupVoicesByLang(voices)).filter(x => accept.has(x))
+  return langs.length ? langs : null
+}
+
 function getFirstLanguage(voice) {
   if (voice.langs) return voice.langs[0]
   else return voice.lang

@@ -192,13 +192,7 @@ rxjs.combineLatest(
   createCheckboxes(voices);
 
   //toggle check state
-  var selectedLangs = immediate(() => {
-    if (settings.languages) return settings.languages.split(',')
-    if (settings.languages == '') return []
-    const accept = new Set(acceptLangs.map(x => x.split('-',1)[0]))
-    const langs = Object.keys(groupVoicesByLang(voices)).filter(x => accept.has(x))
-    return langs.length ? langs : []
-  })
+  var selectedLangs = getSelectedLangs(settings, voices, acceptLangs) || []
   var isSelected = function() {
     return selectedLangs.includes($(this).data("lang"));
   };
