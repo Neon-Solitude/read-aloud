@@ -32,7 +32,7 @@ const ENTRIES = {
   "custom-voices": ["rxjs.umd.min", "aws-sdk", "defaults", "tts-engines", "custom-voices"],
   "languages": ["rxjs.umd.min", "defaults", "tts-engines", "languages"],
   "offscreen": ["rxjs.umd.min", "defaults", "messaging", "offscreen"],
-  "options": ["rxjs.umd.min", "jquery-3.7.1.min", "aws-sdk", "defaults", "messaging", "tts-engines", "options"],
+  "options": ["rxjs.umd.min", "aws-sdk", "defaults", "messaging", "tts-engines", "options"],
   "pdf-viewer": ["rxjs.umd.min", "defaults", "messaging", "pdf-viewer"],
   "player": ["rxjs.umd.min", "peerjs.min", "defaults", "messaging", "google-translate", "aws-sdk", "tts-engines", "speech", "document", "player"],
   "popup": ["rxjs.umd.min", "defaults", "messaging", "popup"],

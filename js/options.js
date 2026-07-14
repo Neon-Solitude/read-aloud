@@ -21,10 +21,11 @@
   domReadyPromise
     .then(() => {
       if (queryString.referer) {
-        $("button.close").show()
-          .click(function() {
-            history.back();
-          })
+        const close = qs("button.close")
+        show(close)
+        close.addEventListener("click", function() {
+          history.back();
+        })
       }
     })
 
@@ -33,18 +34,16 @@
   //account button
   domReadyPromise
     .then(() => {
-      $("#account-button")
-        .click(function() {
-          getAuthToken({interactive: true})
-            .then(token => brapi.tabs.create({url: config.webAppUrl + "/premium-voices.html?t=" + token}))
-            .catch(handleError)
-          return false;
-        })
-      $("#logout-button")
-        .click(function() {
-          clearAuthToken()
-          return false;
-        })
+      qs("#account-button").addEventListener("click", function(e) {
+        e.preventDefault();
+        getAuthToken({interactive: true})
+          .then(token => brapi.tabs.create({url: config.webAppUrl + "/premium-voices.html?t=" + token}))
+          .catch(handleError)
+      })
+      qs("#logout-button").addEventListener("click", function(e) {
+        e.preventDefault();
+        clearAuthToken()
+      })
     })
 
   rxjs.combineLatest([
@@ -60,7 +59,7 @@
   //hotkey
   domReadyPromise
     .then(() => {
-      $("#hotkeys-link").click(function() {
+      qs("#hotkeys-link").addEventListener("click", function() {
         brapi.tabs.create({url: getHotkeySettingsUrl()});
       });
     })
@@ -70,21 +69,19 @@
   //voice
   domReadyPromise
     .then(() => {
-      $("#voices")
-        .change(function() {
-          var voiceName = $(this).val();
-          if (voiceName == "@custom") brapi.tabs.create({url: "custom-voices.html"});
-          else if (voiceName == "@languages") brapi.tabs.create({url: "languages.html"});
-          else if (voiceName == "@premium") brapi.tabs.create({url: "premium-voices.html"});
-          else if (voiceName == "@piper") bgPageInvoke("managePiperVoices").catch(console.error)
-          else if (voiceName == "@supertonic") bgPageInvoke("manageSupertonicVoices").catch(console.error)
-          else if (voiceName == "@nghitts") bgPageInvoke("manageNghiTtsVoices").catch(console.error)
-          else updateSettings({voiceName})
-        });
-      $("#languages-edit-button")
-        .click(function() {
-          brapi.tabs.create({url: "languages.html"});
-        })
+      qs("#voices").addEventListener("change", function() {
+        var voiceName = this.value;
+        if (voiceName == "@custom") brapi.tabs.create({url: "custom-voices.html"});
+        else if (voiceName == "@languages") brapi.tabs.create({url: "languages.html"});
+        else if (voiceName == "@premium") brapi.tabs.create({url: "premium-voices.html"});
+        else if (voiceName == "@piper") bgPageInvoke("managePiperVoices").catch(console.error)
+        else if (voiceName == "@supertonic") bgPageInvoke("manageSupertonicVoices").catch(console.error)
+        else if (voiceName == "@nghitts") bgPageInvoke("manageNghiTtsVoices").catch(console.error)
+        else updateSettings({voiceName})
+      });
+      qs("#languages-edit-button").addEventListener("click", function() {
+        brapi.tabs.create({url: "languages.html"});
+      })
     })
 
   const voicesPopulatedObservable = rxjs.combineLatest([
@@ -99,7 +96,7 @@
 
   rxjs.combineLatest([observeSetting("voiceName"), voicesPopulatedObservable])
     .subscribe(([voiceName]) => {
-      $("#voices").val(voiceName || "")
+      qs("#voices").value = voiceName || ""
     })
 
   rxjs.combineLatest(
@@ -107,7 +104,7 @@
     observeSetting("gcpCreds"),
     domReadyPromise
   ).subscribe(([voiceName, gcpCreds]) => {
-    $("#voice-info").toggle(!!voiceName && isGoogleWavenet({voiceName}) && !gcpCreds)
+    toggle(qs("#voice-info"), !!voiceName && isGoogleWavenet({voiceName}) && !gcpCreds)
   })
 
 
@@ -115,25 +112,23 @@
   //rate
   const rateSliderPromise = domReadyPromise
     .then(() => {
-      const slider = createSlider($("#rate").get(0), {
+      const slider = createSlider(qs("#rate"), {
           onChange(value) {
-            const rate = Math.pow($("#rate").data("pow"), value)
-            updateSetting("rate" + $("#voices").val(), Number(rate.toFixed(3)))
+            const rate = Math.pow(Number(qs("#rate").dataset.pow), value)
+            updateSetting("rate" + qs("#voices").value, Number(rate.toFixed(3)))
           }
         })
-      $("#rate-edit-button")
-        .click(function() {
-          $("#rate, #rate-input-div").toggle();
-        });
-      $("#rate-input")
-        .change(function() {
-          var val = $(this).val().trim();
-          if (isNaN(val)) $(this).val(1);
-          else if (val < .1) $(this).val(.1);
-          else if (val > 10) $(this).val(10);
-          else $("#rate-edit-button").hide();
-          updateSetting("rate" + $("#voices").val(), Number($(this).val()))
-        });
+      qs("#rate-edit-button").addEventListener("click", function() {
+        qsa("#rate, #rate-input-div").forEach(el => toggle(el, getComputedStyle(el).display == "none"))
+      });
+      qs("#rate-input").addEventListener("change", function() {
+        var val = this.value.trim();
+        if (isNaN(val)) this.value = 1;
+        else if (val < .1) this.value = .1;
+        else if (val > 10) this.value = 10;
+        else hide(qs("#rate-edit-button"));
+        updateSetting("rate" + qs("#voices").value, Number(this.value))
+      });
       return slider
     })
 
@@ -145,13 +140,13 @@
 
   rxjs.combineLatest([rateObservable, rateSliderPromise])
     .subscribe(([rate, slider]) => {
-      slider.setValue(Math.log(rate || defaults.rate) / Math.log($("#rate").data("pow")))
-      $("#rate-input").val(rate || defaults.rate)
+      slider.setValue(Math.log(rate || defaults.rate) / Math.log(Number(qs("#rate").dataset.pow)))
+      qs("#rate-input").value = rate || defaults.rate
     })
 
   rxjs.combineLatest([observeSetting("voiceName"), rateObservable, domReadyPromise])
     .subscribe(([voiceName, rate]) => {
-      $("#rate-warning").toggle((!voiceName || isNativeVoice({voiceName})) && rate > 2)
+      toggle(qs("#rate-warning"), (!voiceName || isNativeVoice({voiceName})) && rate > 2)
     })
 
 
@@ -159,7 +154,7 @@
   //pitch
   const pitchSliderPromise = domReadyPromise
     .then(() => {
-      return createSlider($("#pitch").get(0), {
+      return createSlider(qs("#pitch"), {
           onChange(value) {
             updateSettings({pitch: value})
           }
@@ -174,7 +169,7 @@
   //volume
   const volumeSliderPromise = domReadyPromise
     .then(() => {
-      return createSlider($("#volume").get(0), {
+      return createSlider(qs("#volume"), {
           onChange(value) {
             updateSettings({volume: value})
           }
@@ -189,32 +184,30 @@
   //showHighlighting
   domReadyPromise
     .then(() => {
-      $("#show-highlighting")
-        .change(function() {
-          updateSettings({showHighlighting: $(this).val()})
-        })
+      qs("#show-highlighting").addEventListener("change", function() {
+        updateSettings({showHighlighting: this.value})
+      })
     })
 
   rxjs.combineLatest([observeSetting("showHighlighting"), domReadyPromise])
-    .subscribe(([showHighlighting]) => $("#show-highlighting").val(showHighlighting || defaults.showHighlighting))
+    .subscribe(([showHighlighting]) => qs("#show-highlighting").value = showHighlighting || defaults.showHighlighting)
 
 
 
   //audioPlayback
   Promise.all([brapi.storage.local.get(["useEmbeddedPlayer"]), domReadyPromise])
     .then(([settings]) => {
-      $("#audio-playback")
-        .change(function() {
-          updateSettings({useEmbeddedPlayer: JSON.parse($(this).val())})
-          brapi.runtime.sendMessage({dest: "player", method: "close"})
-            .catch(err => "OK")
-        })
-      $(".audio-playback-visible").toggle(settings.useEmbeddedPlayer ? true : false)
+      qs("#audio-playback").addEventListener("change", function() {
+        updateSettings({useEmbeddedPlayer: JSON.parse(this.value)})
+        brapi.runtime.sendMessage({dest: "player", method: "close"})
+          .catch(err => "OK")
+      })
+      qsa(".audio-playback-visible").forEach(el => toggle(el, settings.useEmbeddedPlayer ? true : false))
     })
 
   rxjs.combineLatest([observeSetting("useEmbeddedPlayer"), domReadyPromise])
     .subscribe(([useEmbeddedPlayer]) => {
-      $("#audio-playback").val(useEmbeddedPlayer ? "true" : "false")
+      qs("#audio-playback").value = useEmbeddedPlayer ? "true" : "false"
     })
 
 
@@ -239,7 +232,7 @@
               return voices$.pipe(rxjs.take(1))
             }).pipe(
               rxjs.exhaustMap(voices => {
-                const voiceName = $("#voices").val()
+                const voiceName = qs("#voices").value
                 const voice = voiceName && findVoiceByName(voices, voiceName)
                 const {lang} = parseLang(voice && getFirstLanguage(voice) || "en-US")
                 return rxjs.defer(() => demoSpeech.get(lang)).pipe(
@@ -265,12 +258,11 @@
     )
   ).subscribe({
     next({state, playbackError}) {
-      $("#test-voice .spinner").toggle(state == "LOADING")
-      $("#test-voice [data-i18n]").text(
+      toggle(qs("#test-voice .spinner"), state == "LOADING")
+      qs("#test-voice [data-i18n]").textContent =
         brapi.i18n.getMessage(state == "STOPPED" ? "options_test_button" : "options_stop_button")
-      )
       if (state == "STOPPED" && playbackError) handleError(playbackError)
-      else $("#status").parent().hide()
+      else hide(qs("#status").parentElement)
     },
     error: handleError
   })
@@ -280,11 +272,10 @@
   //buttons
   domReadyPromise
     .then(() => {
-      $("#test-voice").click(() => voiceTestSubject.next())
-      $("#reset")
-        .click(function() {
-          clearSettings()
-        });
+      qs("#test-voice").addEventListener("click", () => voiceTestSubject.next())
+      qs("#reset").addEventListener("click", function() {
+        clearSettings()
+      });
     })
 
 
@@ -292,7 +283,7 @@
   //status
   domReadyPromise
     .then(() => {
-      $("#status").parent().hide()
+      hide(qs("#status").parentElement)
     })
 
   settingsChange$
@@ -306,11 +297,9 @@
 
 
   function populateVoices(allVoices, settings, acceptLangs) {
-    $("#voices").empty()
-    $("<option>")
-      .val("")
-      .text("Auto select")
-      .appendTo("#voices")
+    const voicesEl = qs("#voices")
+    voicesEl.replaceChildren()
+    makeEl("option", {text: "Auto select", attrs: {value: ""}, parent: voicesEl})
 
     //get voices filtered by selected languages
     var selectedLangs = getSelectedLangs(settings, allVoices, acceptLangs)
@@ -341,7 +330,7 @@
     for (var name in groups) groups[name].sort(voiceSorter);
 
     const msg = key => brapi.i18n.getMessage(key)
-    const spacer = () => $("<optgroup>").appendTo($("#voices"))   //empty group for visual separation
+    const spacer = () => makeEl("optgroup", {parent: qs("#voices")})   //empty group for visual separation
 
     //offline
     renderOptgroup(msg("options_voicegroup_offline"), groups.offline)
@@ -372,13 +361,13 @@
 
   //Append a labeled <optgroup> of voices to #voices and return it.
   function renderOptgroup(label, voices) {
-    const group = $("<optgroup>").attr("label", label).appendTo($("#voices"))
+    const group = makeEl("optgroup", {attrs: {label}, parent: qs("#voices")})
     for (const voice of voices) appendVoiceOption(group, voice.voiceName, voice.voiceName)
     return group
   }
 
   function appendVoiceOption(group, value, text) {
-    $("<option>").val(value).text(text).appendTo(group)
+    makeEl("option", {text, attrs: {value}, parent: group})
   }
 
   function voiceSorter(a, b) {
@@ -397,26 +386,38 @@
 
 
 
+  var greenCheckAnimation
   function showConfirmation() {
-    $(".green-check").finish().show().delay(500).fadeOut();
+    const check = qs(".green-check")
+    if (greenCheckAnimation) greenCheckAnimation.cancel()
+    show(check)
+    check.style.opacity = "1"
+    greenCheckAnimation = check.animate(
+      [{opacity: 1, offset: 0}, {opacity: 1, offset: 0.55}, {opacity: 0, offset: 1}],
+      {duration: 900}
+    )
+    greenCheckAnimation.onfinish = () => { hide(check); check.style.opacity = "" }
   }
 
   function handleError(err) {
+    const status = qs("#status")
     if (/^{/.test(err.message)) {
       var errInfo = JSON.parse(err.message);
-      $("#status").html(formatError(errInfo)).parent().show();
-      $("#status a").click(function() {
-        switch ($(this).attr("href")) {
+      status.innerHTML = formatError(errInfo);
+      show(status.parentElement);
+      qsa("#status a").forEach(link => link.addEventListener("click", function() {
+        switch (this.getAttribute("href")) {
           case "#sign-in":
             getAuthToken({interactive: true})
               .then(function(token) {
                 if (token) {
-                  $("#test-voice").click();
+                  qs("#test-voice").click();
                   getAccountInfo(token).then(showAccountInfo);
                 }
               })
               .catch(function(err) {
-                $("#status").text(err.message).parent().show();
+                status.textContent = err.message;
+                show(status.parentElement);
               })
             break;
           case "#auth-wavenet":
@@ -429,13 +430,14 @@
             location.href = "connect-phone.html"
             break
         }
-      })
+      }))
     }
     else if (config.browserId == "opera" && /locked fullscreen/.test(err.message)) {
-      $("#status").html("Click <a href='#open-player-tab'>here</a> to start read aloud.").parent().show()
-      $("#status a").click(async function() {
+      status.innerHTML = "Click <a href='#open-player-tab'>here</a> to start read aloud.";
+      show(status.parentElement);
+      qsa("#status a").forEach(link => link.addEventListener("click", async function() {
         try {
-          playerCheckIn$.pipe(rxjs.take(1)).subscribe(() => $("#test-voice").click())
+          playerCheckIn$.pipe(rxjs.take(1)).subscribe(() => qs("#test-voice").click())
           const tab = await brapi.tabs.create({
             url: "player.html?opener=options&autoclose=long",
             index: 0,
@@ -446,55 +448,60 @@
         } catch (err) {
           handleError(err)
         }
-      })
+      }))
     }
     else {
-      $("#status").text(err.message).parent().show();
+      status.textContent = err.message;
+      show(status.parentElement);
     }
   }
 
   function showAccountInfo(account) {
     if (account) {
-      $("#account-email").text(account.email);
-      $("#account-info").show();
+      qs("#account-email").textContent = account.email;
+      show(qs("#account-info"));
     }
     else {
-      $("#account-info").hide();
+      hide(qs("#account-info"));
     }
   }
 
 
 
   function createSlider(elem, {onChange, onSlideChange}) {
-    var min = $(elem).data("min") || 0;
-    var max = $(elem).data("max") || 1;
-    var step = 1 / ($(elem).data("steps") || 20);
-    var $bg = $(elem).empty().toggleClass("slider", true);
-    var $bar = $("<div class='bar'>").appendTo(elem);
-    var $track = $("<div class='track'>").appendTo(elem);
-    var $knob = $("<div class='knob'>").appendTo($track);
+    const min = Number(elem.dataset.min) || 0;
+    const max = Number(elem.dataset.max) || 1;
+    const step = 1 / (Number(elem.dataset.steps) || 20);
+    elem.replaceChildren();
+    elem.classList.add("slider");
+    const bar = makeEl("div", {className: "bar", parent: elem});
+    const track = makeEl("div", {className: "track", parent: elem});
+    const knob = makeEl("div", {className: "knob", parent: track});
 
-    $bg.click(function(e) {
-      var pos = calcPosition(e);
+    elem.addEventListener("click", function(e) {
+      var pos = calcPosition(e.clientX);
       setPosition(pos);
       onChange(min + pos*(max-min));
     })
-    $knob.click(function() {
-      return false;
+    knob.addEventListener("click", function(e) {
+      e.stopPropagation();
     })
-    $knob.on("mousedown touchstart", function() {
-      onSlideStart(function(e) {
-        var pos = calcPosition(e);
+    function onKnobDown(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      onSlideStart(function(clientX) {
+        var pos = calcPosition(clientX);
         setPosition(pos);
         if (onSlideChange) onSlideChange(min + pos*(max-min));
       },
-      function(e) {
-        var pos = calcPosition(e);
+      function(clientX) {
+        var pos = calcPosition(clientX);
         setPosition(pos);
         onChange(min + pos*(max-min));
       })
-      return false;
-    })
+    }
+    knob.addEventListener("mousedown", onKnobDown)
+    knob.addEventListener("touchstart", onKnobDown)
     return {
       setValue(value) {
         setPosition((Math.min(value, max)-min) / (max-min))
@@ -503,42 +510,39 @@
 
     function setPosition(pos) {
       var percent = (100 * pos) + "%";
-      $knob.css("left", percent);
-      $bar.css("width", percent);
+      knob.style.left = percent;
+      bar.style.width = percent;
     }
-    function calcPosition(e) {
-      var rect = $track.get(0).getBoundingClientRect();
-      var position = (e.clientX - rect.left) / rect.width;
+    function calcPosition(clientX) {
+      var rect = track.getBoundingClientRect();
+      var position = (clientX - rect.left) / rect.width;
       position = Math.min(1, Math.max(position, 0));
       return step * Math.round(position / step);
     }
   }
 
   function onSlideStart(onSlideMove, onSlideStop) {
-    $(document).on("mousemove", onSlideMove);
-    $(document).on("mouseup mouseleave", onStop);
-    $(document).on("touchmove", onTouchMove);
-    $(document).on("touchend touchcancel", onTouchEnd);
-
-    function onTouchMove(e) {
-      e.clientX = e.originalEvent.changedTouches[0].clientX;
-      e.clientY = e.originalEvent.changedTouches[0].clientY;
-      onSlideMove(e);
-      return false;
+    function clientXOf(e) {
+      return e.changedTouches ? e.changedTouches[0].clientX : e.clientX
     }
-    function onTouchEnd(e) {
-      e.clientX = e.originalEvent.changedTouches[0].clientX;
-      e.clientY = e.originalEvent.changedTouches[0].clientY;
-      onStop(e);
-      return false;
+    function move(e) {
+      if (e.cancelable) e.preventDefault();
+      onSlideMove(clientXOf(e));
     }
-    function onStop(e) {
-      $(document).off("mousemove", onSlideMove);
-      $(document).off("mouseup mouseleave", onStop);
-      $(document).off("touchmove", onTouchMove);
-      $(document).off("touchend touchcancel", onTouchEnd);
-      if (onSlideStop) onSlideStop(e);
-      return false;
+    function stop(e) {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", stop);
+      document.removeEventListener("mouseleave", stop);
+      document.removeEventListener("touchmove", move);
+      document.removeEventListener("touchend", stop);
+      document.removeEventListener("touchcancel", stop);
+      onSlideStop(clientXOf(e));
     }
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", stop);
+    document.addEventListener("mouseleave", stop);
+    document.addEventListener("touchmove", move, {passive: false});
+    document.addEventListener("touchend", stop);
+    document.addEventListener("touchcancel", stop);
   }
 })();
