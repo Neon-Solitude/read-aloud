@@ -760,6 +760,27 @@ function bgPageInvoke(method, args) {
   })
 }
 
+// A dropped connection to a not-yet-ready receiver surfaces as one of these
+// transient runtime errors; annotate it with the method for easier debugging.
+function rethrowMessagingError(err, method) {
+  if (/^(A listener indicated|Could not establish)/.test(err.message)) throw new Error(err.message + " " + method)
+  throw err
+}
+
+// Send a message to a registerMessageListener("<dest>", ...) target and unwrap
+// its {error} envelope. Used by sendToPlayer / sendToOffscreen / sendToPdfViewer.
+async function sendMessage(dest, message) {
+  message.dest = dest
+  const result = await Promise.resolve(brapi.runtime.sendMessage(message))
+    .catch(err => rethrowMessagingError(err, message.method))
+  if (result && result.error) throw result.error
+  return result
+}
+
+function sendToPlayer(message) {
+  return sendMessage("player", message)
+}
+
 function detectTabLanguage(tabId) {
   return new Promise(function(fulfill) {
     brapi.tabs.detectLanguage(tabId, fulfill)

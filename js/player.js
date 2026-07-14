@@ -450,15 +450,8 @@ function playAudioOffscreen(urlPromise, options, playbackState$) {
   )
 }
 
-async function sendToOffscreen(message) {
-  message.dest = "offscreen"
-  const result = await brapi.runtime.sendMessage(message)
-    .catch(err => {
-      if (/^(A listener indicated|Could not establish)/.test(err.message)) throw new Error(err.message + " " + message.method)
-      throw err
-    })
-  if (result && result.error) throw result.error
-  else return result
+function sendToOffscreen(message) {
+  return sendMessage("offscreen", message)
 }
 
 async function shouldPlaySilence(providerId) {

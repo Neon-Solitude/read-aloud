@@ -25,10 +25,3 @@ function submit() {
       $("#lbl-error").text("Server could not be contacted, please email me directly at hai.phan@gmail.com. Thank you!").show();
     })
 }
-
-async function sendToPlayer(message) {
-  message.dest = "player"
-  const result = await brapi.runtime.sendMessage(message)
-  if (result && result.error) throw result.error
-  else return result
-}

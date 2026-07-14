@@ -49,10 +49,3 @@ function setState(newState) {
     else $("#state-" + state).hide()
   }
 }
-
-async function sendToPlayer(message) {
-  message.dest = "player"
-  const result = await brapi.runtime.sendMessage(message)
-  if (result && result.error) throw result.error
-  else return result
-}

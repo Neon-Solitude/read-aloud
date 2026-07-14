@@ -81,8 +81,7 @@ function TabSource() {
     const result = await brapi.tabs.sendMessage(tabId, message)
       .catch(err => {
         brapi.storage.local.remove("contentScriptTabId")
-        if (/^(A listener indicated|Could not establish)/.test(err.message)) throw new Error(err.message + " " + message.method)
-        throw err
+        rethrowMessagingError(err, message.method)
       })
     if (result && result.error) throw result.error
     else return result
@@ -114,15 +113,8 @@ function TabSource() {
     }
   }
 
-  async function sendToPdfViewer(message) {
-    message.dest = "pdfViewer"
-    const result = await brapi.runtime.sendMessage(message)
-      .catch(err => {
-        if (/^(A listener indicated|Could not establish)/.test(err.message)) throw new Error(err.message + " " + message.method)
-        throw err
-      })
-    if (result && result.error) throw result.error
-    else return result
+  function sendToPdfViewer(message) {
+    return sendMessage("pdfViewer", message)
   }
 }
 
