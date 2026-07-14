@@ -1,11 +1,6 @@
 try {
-  importScripts(
-    "js/rxjs.umd.min.js",
-    "js/defaults.js",
-    "js/messaging.js",
-    "js/content-handlers.js",
-    "js/events.js"
-  )
+  // Bundled by build.mjs (concatenation of the same ordered sources).
+  importScripts("build/js/background.js")
 }
 catch (err) {
   console.error(err)
